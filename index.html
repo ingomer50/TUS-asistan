@@ -128,6 +128,12 @@
     .btn:active {
       transform: scale(0.98);
     }
+    .btn:disabled {
+      opacity: 0.36;
+      cursor: not-allowed;
+      pointer-events: none;
+      filter: grayscale(0.45);
+    }
     .btn:hover {
       border-color: var(--primary);
     }
@@ -633,10 +639,12 @@
       flex-shrink: 0;
     }
     .cal-hours {
-      font-size: 11px;
+      font-size: 9.5px;
+      line-height: 1.15;
       font-weight: 700;
       color: var(--emerald);
       text-align: center;
+      word-break: break-word;
     }
     .cal-nobet-tag {
       font-size: 9px;
@@ -941,13 +949,13 @@
           <div class="timer-controls-layout">
             <button type="button" class="btn btn-primary" id="btnStart">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              <span>Başlat</span>
+              <span id="btnStartText">Başlat</span>
             </button>
-            <button type="button" class="btn btn-amber" id="btnMola">
+            <button type="button" class="btn btn-amber" id="btnMola" disabled>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg>
-              <span>Mola</span>
+              <span id="btnMolaText">Mola Ver</span>
             </button>
-            <button type="button" class="btn btn-emerald btn-full-row" id="btnSaveSession">
+            <button type="button" class="btn btn-emerald btn-full-row" id="btnSaveSession" disabled>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
               <span>Kaydet & Bitir</span>
             </button>
@@ -957,11 +965,15 @@
             <div class="strip-metrics">
               <span>Günlük Hedef: <strong id="todayGoalPctText">%0</strong> (<span id="dailyGoalHoursText">8 sa</span>)</span>
             </div>
-            <label class="check-label">
-              <input type="checkbox" id="lockscreenToggle" checked />
-              <span>Kilit Ekranı Bildirimi (S23 Ultra)</span>
-            </label>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <label class="check-label">
+                <input type="checkbox" id="lockscreenToggle" checked />
+                <span>Kilit Ekranı Bildirimi</span>
+              </label>
+              <button type="button" class="btn btn-sm" id="btnNotifPerm" style="padding:3px 8px;font-size:11px;">Bildirim İzni</button>
+            </div>
           </div>
+          <audio id="bgKeepAliveAudio" loop playsinline preload="auto" style="display:none;"></audio>
         </div>
       </div>
 
@@ -1331,7 +1343,7 @@
       <div id="aodDailyStats" style="font-size:13px;color:#94a3b8;margin-bottom:20px;">Bugün: 0 sa 00 dk • Genel Toplam: 0 sa 00 dk</div>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:20px;">
         <button type="button" class="btn btn-primary" id="aodBtnStart">Başlat</button>
-        <button type="button" class="btn btn-amber" id="aodBtnBreak">Mola</button>
+        <button type="button" class="btn btn-amber" id="aodBtnBreak" disabled>Mola Ver</button>
       </div>
       <button type="button" class="btn" id="btnCloseAod" style="border-color:#334155;color:#cbd5e1;">AOD Kapat</button>
     </div>
@@ -1363,7 +1375,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v13') caches.delete(k);
+              if (k !== 'tus-asistani-v14') caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1388,7 +1400,28 @@
       sec = Math.max(0, Math.floor(sec));
       const h = Math.floor(sec / 3600);
       const m = Math.floor((sec % 3600) / 60);
-      return `${h} sa ${String(m).padStart(2, '0')} dk`;
+      if (h > 0) return `${h} saat ${String(m).padStart(2, '0')} dk`;
+      return `${m} dk`;
+    }
+
+    function formatDurationLive(sec) {
+      sec = Math.max(0, Math.floor(sec));
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      if (h > 0) return `${h} saat ${String(m).padStart(2, '0')} dk ${String(s).padStart(2, '0')} sn`;
+      return `${m} dk ${String(s).padStart(2, '0')} sn`;
+    }
+
+    function formatCalDuration(sec) {
+      sec = Math.max(0, Math.floor(sec));
+      if (sec <= 0) return '';
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      if (h > 0 && m > 0) return `${h} saat ${m}dk`;
+      if (h > 0 && m === 0) return `${h} saat`;
+      if (m > 0) return `${m}dk`;
+      return `${sec}sn`;
     }
 
     function formatHMS(sec) {
@@ -1462,8 +1495,9 @@
     let quickNobetMode = false;
 
     let silentAudioEl = null;
-    let lastMediaKey = '';
-    let lastMediaSyncTime = 0;
+    let lastMediaSec = -1;
+    let lastNotifSyncTime = 0;
+    let lastNotifPhase = '';
 
     function createAudibleThresholdWavUrl() {
       const sampleRate = 8000;
@@ -1487,9 +1521,9 @@
       writeStr(36, 'data');
       view.setUint32(40, numSamples * 2, true);
 
-      // 25 Hz sub-bass dalga: Telefon hoparlöründen duyulmaz ama Android Chrome ses eşiğini geçer
-      const freq = 25;
-      const amplitude = 3200;
+      // 140 Hz sinyal (PCM genliği yüksek, hoparlör sesi çok düşük: Chrome sessizlik filtresini %100 aşar)
+      const freq = 140;
+      const amplitude = 14000;
       for (let i = 0; i < numSamples; i++) {
         const sample = Math.round(Math.sin((2 * Math.PI * freq * i) / sampleRate) * amplitude);
         view.setInt16(44 + i * 2, sample, true);
@@ -1501,15 +1535,115 @@
       return 'data:audio/wav;base64,' + btoa(bin);
     }
 
+    function updateNotifPermissionBadge() {
+      const btn = document.getElementById('btnNotifPerm');
+      if (!btn) return;
+      if (!('Notification' in window)) {
+        btn.style.display = 'none';
+        return;
+      }
+      if (Notification.permission === 'granted') {
+        btn.textContent = 'Bildirim İzni: Açık';
+        btn.style.borderColor = 'var(--emerald)';
+        btn.style.color = '#6ee7b7';
+      } else if (Notification.permission === 'denied') {
+        btn.textContent = 'Bildirim Engelli (Ayarlardan Açın)';
+        btn.style.borderColor = 'var(--rose)';
+        btn.style.color = '#fda4af';
+      } else {
+        btn.textContent = 'Bildirim İznini Aç';
+        btn.style.borderColor = 'var(--amber)';
+        btn.style.color = '#fcd34d';
+      }
+    }
+
+    async function requestLockScreenNotificationPermission(silent = false) {
+      if (!('Notification' in window)) return false;
+      if (Notification.permission === 'granted') {
+        updateNotifPermissionBadge();
+        return true;
+      }
+      if (Notification.permission === 'denied') {
+        updateNotifPermissionBadge();
+        if (!silent) showToast('Tarayıcı ayarlarından bildirim izni vermelisiniz');
+        return false;
+      }
+      try {
+        const perm = await Notification.requestPermission();
+        updateNotifPermissionBadge();
+        return perm === 'granted';
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function syncLockScreenNotification(force = false) {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+      if (Notification.permission !== 'granted') return;
+
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if (!reg || !reg.showNotification) return;
+
+        if (!toggle || !toggle.checked || !timerState.running) {
+          const existing = await reg.getNotifications({ tag: 'tus-lockscreen-timer' });
+          existing.forEach(n => n.close());
+          lastNotifPhase = '';
+          return;
+        }
+
+        const now = Date.now();
+        const stateSig = `${timerState.phase}_${timerState.selectedSubject}_${timerState.running}`;
+        if (!force && stateSig === lastNotifPhase && now - lastNotifSyncTime < 10000) return;
+        lastNotifPhase = stateSig;
+        lastNotifSyncTime = now;
+
+        const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
+        const curSec = getDisplaySeconds();
+        const todayStats = getDayTotals(todayISO());
+        const allTimeSec = getAllTimeStudySec();
+        const icon192 = new URL('./icon-192.png', window.location.href).href;
+
+        const title = timerState.phase === 'break'
+          ? `☕ MOLADA • Oturum: ${formatHMS(curSec)}`
+          : `▶ ${subj} • Oturum: ${formatHMS(curSec)}`;
+
+        const body = `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}
+Genel Toplam: ${formatDuration(allTimeSec)}`;
+
+        const actions = timerState.phase === 'break'
+          ? [
+              { action: 'start', title: '▶ Başlat' },
+              { action: 'save', title: '✅ Kaydet & Bitir' }
+            ]
+          : [
+              { action: 'break', title: '☕ Mola Ver' },
+              { action: 'save', title: '✅ Kaydet & Bitir' }
+            ];
+
+        await reg.showNotification(title, {
+          body,
+          icon: icon192,
+          badge: icon192,
+          tag: 'tus-lockscreen-timer',
+          renotify: false,
+          silent: true,
+          requireInteraction: true,
+          actions
+        });
+      } catch (e) {}
+    }
+
     function ensureLockScreenSession() {
       const toggle = document.getElementById('lockscreenToggle');
       if (!toggle || !toggle.checked) return;
       try {
         if (!silentAudioEl) {
-          silentAudioEl = new Audio(createAudibleThresholdWavUrl());
+          silentAudioEl = document.getElementById('bgKeepAliveAudio') || new Audio();
+          silentAudioEl.src = createAudibleThresholdWavUrl();
           silentAudioEl.loop = true;
-          silentAudioEl.volume = 0.25;
-          silentAudioEl.preload = 'auto';
+          silentAudioEl.volume = 0.04;
         }
         if (timerState.running) {
           const playPromise = silentAudioEl.play();
@@ -1526,7 +1660,7 @@
           navigator.mediaSession.setActionHandler('pause', () => {
             if (timerState.phase === 'break' && timerState.running) {
               startStudyMode();
-            } else {
+            } else if (timerState.phase === 'study' && timerState.running) {
               startBreakMode();
             }
             setTimeout(() => {
@@ -1536,31 +1670,37 @@
               }
             }, 150);
           });
-          navigator.mediaSession.setActionHandler('nexttrack', () => startBreakMode());
-          navigator.mediaSession.setActionHandler('previoustrack', () => startStudyMode());
-          navigator.mediaSession.setActionHandler('stop', () => commitCurrentSegment(false));
+          navigator.mediaSession.setActionHandler('nexttrack', () => {
+            if (timerState.running && timerState.phase === 'study') startBreakMode();
+          });
+          navigator.mediaSession.setActionHandler('previoustrack', () => {
+            startStudyMode();
+          });
+          navigator.mediaSession.setActionHandler('stop', () => {
+            if (timerState.running || timerState.elapsedSec > 0) commitCurrentSegment(false);
+          });
         }
       } catch (e) {}
     }
 
     function updateLockScreenMetadata(force = false) {
       const toggle = document.getElementById('lockscreenToggle');
-      if (!toggle || !toggle.checked || !('mediaSession' in navigator)) return;
-
-      const now = Date.now();
-      const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
-      const curKey = `${timerState.phase}_${subj}_${timerState.running}`;
-
-      if (!force && curKey === lastMediaKey && now - lastMediaSyncTime < 5000) return;
-      lastMediaKey = curKey;
-      lastMediaSyncTime = now;
+      if (!toggle || !toggle.checked) return;
 
       const curSec = getDisplaySeconds();
+      if (!force && curSec === lastMediaSec) return;
+      lastMediaSec = curSec;
+
+      syncLockScreenNotification(force);
+
+      if (!('mediaSession' in navigator)) return;
+
+      const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
       const todayStats = getDayTotals(todayISO());
       const allTimeSec = getAllTimeStudySec();
       const stateTitle = timerState.phase === 'break'
-        ? `MOLA • ${formatHMS(curSec)}`
-        : `${subj} • ${formatHMS(curSec)}`;
+        ? `MOLA • Oturum: ${formatHMS(curSec)}`
+        : `${subj} • Oturum: ${formatHMS(curSec)}`;
 
       const icon192 = new URL('./icon-192.png', window.location.href).href;
       const icon512 = new URL('./icon-512.png', window.location.href).href;
@@ -1568,7 +1708,7 @@
       try {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: stateTitle,
-          artist: `Bugün: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`,
+          artist: `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`,
           album: `Genel Toplam: ${formatDuration(allTimeSec)}`,
           artwork: [
             { src: icon192, sizes: '192x192', type: 'image/png' },
@@ -1576,17 +1716,17 @@
           ]
         });
         navigator.mediaSession.playbackState = timerState.running ? 'playing' : 'paused';
-        if ('setPositionState' in navigator.mediaSession) {
-          const isCountdown = timerState.mode === 'countdown' && timerState.phase === 'study';
-          const dur = isCountdown ? Math.max(1, timerState.countdownTargetSec) : 86400;
-          const pos = Math.min(dur, Math.max(0, timerState.elapsedSec));
-          navigator.mediaSession.setPositionState({
-            duration: dur,
-            playbackRate: timerState.running ? 1 : 0,
-            position: pos
-          });
-        }
       } catch (e) {}
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        const data = event.data;
+        if (!data || data.type !== 'TUS_NOTIFICATION_ACTION') return;
+        if (data.action === 'start') startStudyMode();
+        else if (data.action === 'break') startBreakMode();
+        else if (data.action === 'save') commitCurrentSegment(false);
+      });
     }
 
     document.addEventListener('visibilitychange', () => {
@@ -1684,7 +1824,12 @@
       const disp = document.getElementById('timerDisplay');
       const subCap = document.getElementById('sessionSubCaption');
       const startBtn = document.getElementById('btnStart');
+      const startBtnText = document.getElementById('btnStartText');
       const molaBtn = document.getElementById('btnMola');
+      const molaBtnText = document.getElementById('btnMolaText');
+      const saveBtn = document.getElementById('btnSaveSession');
+      const aodStart = document.getElementById('aodBtnStart');
+      const aodBreak = document.getElementById('aodBtnBreak');
 
       const sec = getDisplaySeconds();
       disp.textContent = formatHMS(sec);
@@ -1692,8 +1837,8 @@
       const totals = getDayTotals(todayISO());
       const allTimeSec = getAllTimeStudySec();
 
-      document.getElementById('homeTodayStudy').textContent = formatDuration(totals.studySec);
-      document.getElementById('homeTodayBreak').textContent = formatDuration(totals.breakSec);
+      document.getElementById('homeTodayStudy').textContent = formatDurationLive(totals.studySec);
+      document.getElementById('homeTodayBreak').textContent = formatDurationLive(totals.breakSec);
       document.getElementById('homeAllTimeTotal').textContent = formatDuration(allTimeSec);
 
       const todayMeta = state.dayMeta[todayISO()];
@@ -1707,23 +1852,46 @@
 
       timerBox.classList.remove('state-study', 'state-break');
 
+      const isSessionActive = timerState.running || timerState.elapsedSec > 0;
+
       if (timerState.phase === 'break' && timerState.running) {
         timerBox.classList.add('state-break');
         banner.innerHTML = `<span class="pulse-dot"></span><span>ŞU AN MOLADASINIZ</span>`;
         subCap.textContent = `Bu Mola Oturumu • Bugün Toplam Mola: ${formatDuration(totals.breakSec)}`;
         startBtn.className = 'btn btn-primary';
+        startBtn.disabled = false;
+        if (startBtnText) startBtnText.textContent = 'Derse Dön';
         molaBtn.className = 'btn btn-break-active';
+        molaBtn.disabled = true;
+        if (molaBtnText) molaBtnText.textContent = 'Moladasınız...';
+        saveBtn.disabled = false;
+        if (aodStart) { aodStart.disabled = false; aodStart.textContent = 'Derse Dön'; }
+        if (aodBreak) { aodBreak.disabled = true; aodBreak.textContent = 'Moladasınız...'; }
       } else if (timerState.phase === 'study' && timerState.running) {
         timerBox.classList.add('state-study');
         banner.innerHTML = `<span class="pulse-dot"></span><span>ÇALIŞILIYOR • ${subj ? subj.name : ''}</span>`;
         subCap.textContent = `Aktif Ders Oturumu • Bugün Toplam Ders: ${formatDuration(totals.studySec)}`;
         startBtn.className = 'btn btn-active-indicator';
+        startBtn.disabled = true;
+        if (startBtnText) startBtnText.textContent = 'Çalışılıyor...';
         molaBtn.className = 'btn btn-amber';
+        molaBtn.disabled = false;
+        if (molaBtnText) molaBtnText.textContent = 'Mola Ver';
+        saveBtn.disabled = false;
+        if (aodStart) { aodStart.disabled = true; aodStart.textContent = 'Çalışılıyor...'; }
+        if (aodBreak) { aodBreak.disabled = false; aodBreak.textContent = 'Mola Ver'; }
       } else {
         banner.innerHTML = `<span>HAZIR • ${subj ? subj.name : ''}</span>`;
-        subCap.textContent = `Aktif Ders Oturumu • Bugün Toplam Ders: ${formatDuration(totals.studySec)}`;
+        subCap.textContent = `Oturum Başlatılmadı • Bugün Toplam Ders: ${formatDuration(totals.studySec)}`;
         startBtn.className = 'btn btn-primary';
+        startBtn.disabled = false;
+        if (startBtnText) startBtnText.textContent = 'Başlat';
         molaBtn.className = 'btn btn-amber';
+        molaBtn.disabled = true;
+        if (molaBtnText) molaBtnText.textContent = 'Mola Ver';
+        saveBtn.disabled = !isSessionActive;
+        if (aodStart) { aodStart.disabled = false; aodStart.textContent = 'Başlat'; }
+        if (aodBreak) { aodBreak.disabled = true; aodBreak.textContent = 'Mola Ver'; }
       }
 
       const goalHrs = state.settings.dailyGoalHours || 8;
@@ -1735,7 +1903,7 @@
       document.getElementById('aodSubject').textContent = (timerState.phase === 'break' && timerState.running) ? 'ŞU AN MOLADASINIZ' : (subj ? subj.name : '');
       document.getElementById('aodSubject').style.color = (timerState.phase === 'break' && timerState.running) ? '#fbbf24' : '#38bdf8';
       document.getElementById('aodTimer').textContent = formatHMS(sec);
-      document.getElementById('aodDailyStats').textContent = `Bugün: ${formatDuration(totals.studySec)} • Genel Toplam: ${formatDuration(allTimeSec)}`;
+      document.getElementById('aodDailyStats').textContent = `Bugün Ders: ${formatDuration(totals.studySec)} • Mola: ${formatDuration(totals.breakSec)}`;
 
       document.title = timerState.running
         ? `${formatHMS(sec)} - ${timerState.phase === 'break' ? 'Mola' : (subj ? subj.name : 'TUS')}`
@@ -1765,8 +1933,12 @@
       if (timerState.phase === 'study' && timerState.running) {
         return;
       }
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && 'Notification' in window && Notification.permission === 'default') {
+        requestLockScreenNotificationPermission(true).then(() => syncLockScreenNotification(true));
+      }
       if (timerState.phase === 'break') {
-        if (timerState.elapsedSec >= 5) {
+        if (timerState.elapsedSec >= 1) {
           commitCurrentSegment(false);
         } else {
           timerState.elapsedSec = 0;
@@ -1782,17 +1954,16 @@
     }
 
     function startBreakMode() {
-      if (timerState.phase === 'break' && timerState.running) {
+      if (!timerState.running || timerState.phase !== 'study') {
+        showToast('Mola vermek için önce bir çalışma oturumu başlatın');
         return;
       }
-      if (timerState.phase === 'study') {
-        if (timerState.elapsedSec >= 5) {
-          commitCurrentSegment(false);
-        } else {
-          timerState.elapsedSec = 0;
-        }
-        timerState.phase = 'break';
+      if (timerState.elapsedSec >= 1) {
+        commitCurrentSegment(false);
+      } else {
+        timerState.elapsedSec = 0;
       }
+      timerState.phase = 'break';
       timerState.running = true;
       timerState.lastTickMs = Date.now();
       clearInterval(timerState.intervalId);
@@ -1802,12 +1973,15 @@
     }
 
     function commitCurrentSegment(keepRunning = false) {
+      if (!keepRunning && !timerState.running && timerState.elapsedSec <= 0) {
+        return;
+      }
       if (timerState.running) tickTimer();
       const sec = timerState.elapsedSec;
       const topic = document.getElementById('timerTopicInput').value.trim();
       const finishedTopic = document.getElementById('topicFinishedCheck').checked;
 
-      if (sec >= 5) {
+      if (sec >= 1) {
         state.sessions.push({
           id: Date.now() + Math.random(),
           date: todayISO(),
@@ -1844,6 +2018,7 @@
         timerState.phase = 'study';
         clearInterval(timerState.intervalId);
         ensureLockScreenSession();
+        syncLockScreenNotification(true);
       } else {
         timerState.lastTickMs = Date.now();
       }
@@ -2125,7 +2300,7 @@
           + (iso === selectedDateISO ? ' selected' : '')
           + (meta.nobet ? ' nobet' : '');
 
-        const hrsText = daySec > 0 ? `${(daySec / 3600).toFixed(1)}s` : '';
+        const hrsText = formatCalDuration(daySec);
         cell.innerHTML = `
           <div class="cal-day-top">
             <span>${d}</span>
@@ -2677,6 +2852,7 @@
     }
 
     function renderAll() {
+      updateNotifPermissionBadge();
       updateCountdownHeader();
       renderSubjectPills();
       updateTimerUI(true);
@@ -2735,13 +2911,25 @@
     document.getElementById('btnMola').onclick = () => startBreakMode();
     document.getElementById('btnSaveSession').onclick = () => commitCurrentSegment(false);
 
+    document.getElementById('btnNotifPerm').onclick = () => {
+      requestLockScreenNotificationPermission(false).then(granted => {
+        if (granted) {
+          showToast('Kilit ekranı bildirim izni verildi');
+          if (timerState.running) syncLockScreenNotification(true);
+        }
+      });
+    };
+
     document.getElementById('lockscreenToggle').onchange = (e) => {
       if (e.target.checked) {
-        ensureLockScreenSession();
-        updateLockScreenMetadata(true);
-        showToast('Kilit ekranı bildirimi etkinleştirildi');
-      } else if (silentAudioEl) {
-        silentAudioEl.pause();
+        requestLockScreenNotificationPermission(false).then(() => {
+          ensureLockScreenSession();
+          updateLockScreenMetadata(true);
+          showToast('Kilit ekranı bildirimi etkinleştirildi');
+        });
+      } else {
+        if (silentAudioEl) silentAudioEl.pause();
+        syncLockScreenNotification(true);
       }
     };
 

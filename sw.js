@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tus-asistani-v13';
+const CACHE_NAME = 'tus-asistani-v14';
 const ASSETS = [
   './',
   './index.html',
@@ -30,6 +30,25 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+self.addEventListener('notificationclick', (event) => {
+  const action = event.action || 'focus';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        client.postMessage({ type: 'TUS_NOTIFICATION_ACTION', action });
+      }
+      if (action === 'focus') {
+        if (clientList.length > 0 && 'focus' in clientList[0]) {
+          return clientList[0].focus();
+        }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow('./index.html');
+        }
+      }
+    })
+  );
 });
 
 self.addEventListener('fetch', (event) => {
