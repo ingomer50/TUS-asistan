@@ -1375,7 +1375,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v14') caches.delete(k);
+              if (k !== 'tus-asistani-v15') caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1521,12 +1521,9 @@
       writeStr(36, 'data');
       view.setUint32(40, numSamples * 2, true);
 
-      // 140 Hz sinyal (PCM genliği yüksek, hoparlör sesi çok düşük: Chrome sessizlik filtresini %100 aşar)
-      const freq = 140;
-      const amplitude = 14000;
+      // Tamamen sessiz (0 genlikli dijital sessizlik)
       for (let i = 0; i < numSamples; i++) {
-        const sample = Math.round(Math.sin((2 * Math.PI * freq * i) / sampleRate) * amplitude);
-        view.setInt16(44 + i * 2, sample, true);
+        view.setInt16(44 + i * 2, 0, true);
       }
 
       const bytes = new Uint8Array(buffer);
@@ -1643,7 +1640,8 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
           silentAudioEl = document.getElementById('bgKeepAliveAudio') || new Audio();
           silentAudioEl.src = createAudibleThresholdWavUrl();
           silentAudioEl.loop = true;
-          silentAudioEl.volume = 0.04;
+          silentAudioEl.volume = 0;
+          silentAudioEl.muted = true;
         }
         if (timerState.running) {
           const playPromise = silentAudioEl.play();
@@ -2029,15 +2027,15 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       const today = todayISO();
       document.getElementById('todayDateLabel').textContent = today;
       const listEl = document.getElementById('todaySessionsList');
-      const todaySessions = state.sessions.filter(s => s.date === today).reverse();
+      const todaySessions = state.sessions.filter(s => s.date === today && s.type !== 'break').reverse();
 
       if (!todaySessions.length) {
-        listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">Bugün henüz kayıtlı oturum yok.</div>`;
+        listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">Bugün henüz kayıtlı çalışma oturumu yok.</div>`;
       } else {
         listEl.innerHTML = todaySessions.map(s => {
           const subj = SUBJECTS.find(x => x.id === s.subjectId);
-          const title = s.type === 'break' ? 'Mola' : (subj ? subj.name : s.subjectId);
-          const color = s.type === 'break' ? '#f59e0b' : (subj ? subj.color : '#38bdf8');
+          const title = subj ? subj.name : s.subjectId;
+          const color = subj ? subj.color : '#38bdf8';
           const hasTopic = s.topic && s.topic !== 'Mola';
           return `
             <div class="session-item">
@@ -2134,13 +2132,13 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       }
 
       const listEl = document.getElementById('selectedDaySessionsList');
-      if (!allDaySessions.length) {
-        listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">Bu tarihte kayıtlı oturum veya konu bulunmuyor.</div>`;
+      if (!studySessions.length) {
+        listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">Bu tarihte kayıtlı çalışma oturumu veya konu bulunmuyor.</div>`;
       } else {
-        listEl.innerHTML = allDaySessions.map(s => {
+        listEl.innerHTML = studySessions.map(s => {
           const subj = SUBJECTS.find(x => x.id === s.subjectId);
-          const title = s.type === 'break' ? 'Mola' : (subj ? subj.name : s.subjectId);
-          const color = s.type === 'break' ? '#f59e0b' : (subj ? subj.color : '#38bdf8');
+          const title = subj ? subj.name : s.subjectId;
+          const color = subj ? subj.color : '#38bdf8';
           const hasTopic = s.topic && s.topic !== 'Mola';
           return `
             <div class="session-item">
