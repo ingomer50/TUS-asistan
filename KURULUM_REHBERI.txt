@@ -1,0 +1,42 @@
+====================================================================
+TUS ÇALIŞMA ASİSTANI - APK OLUŞTURMA VE TELEFONA KURULUM REHBERİ
+====================================================================
+
+Bu ZIP paketinin içinde APK oluşturmak ve çevrimdışı çalıştırmak için
+gereken tüm dosyalar hazırdır:
+  - index.html      (Ana uygulama)
+  - manifest.json   (Tam ekran Android uygulama ayarları)
+  - sw.js           (İnternetsiz çalışma önbelleği)
+  - icon-192.png    (Uygulama ikonu)
+  - icon-512.png    (Yüksek çözünürlüklü uygulama ikonu)
+
+--------------------------------------------------------------------
+YÖNTEM 1: EN KOLAY APK OLUŞTURMA (WebIntoApp - 2 Dakika)
+--------------------------------------------------------------------
+1. Bu ZIP dosyasını bilgisayarınızda veya telefonunuzda bir klasöre çıkarın.
+2. Tarayıcıdan https://www.webintoapp.com adresine girin.
+3. "HTML / ZIP" seçeneğini işaretleyin ve bu ZIP dosyasını (veya
+   içindeki dosyaları) yükleyin.
+4. Uygulama Adı: TUS Asistanı
+   İkon: Paketin içindeki icon-512.png dosyasını seçin.
+5. "Make App" butonuna basın ve oluşan paketten "app-release.apk"
+   dosyasını indirip Galaxy S23 Ultra telefonunuza kurun.
+
+--------------------------------------------------------------------
+YÖNTEM 2: S23 ULTRA KİLİT EKRANI & RAPOR İNDİRME İÇİN EN İYİ YÖNTEM
+(PWABuilder TWA APK - Chrome Altyapılı Gerçek Android Uygulaması)
+--------------------------------------------------------------------
+1. Bu ZIP paketinin içindeki tüm dosyaları https://app.netlify.com/drop
+   sayfasına sürükleyip bırakın (ücretsiz kalıcı bir https:// linki verir).
+2. Oluşan https:// linkini https://www.pwabuilder.com adresine yapıştırın.
+3. "Package for Stores" > "Android" seçeneğinden doğrudan .apk indirin.
+   * Bu yöntem S23 Ultra kilit ekranı medya kontrollerini ve .doc / .xlsx
+     rapor indirmelerini %100 yerel Chrome hızında çalıştırır.
+
+--------------------------------------------------------------------
+VERİ YEDEKLEME NOTU
+--------------------------------------------------------------------
+Tüm ders süreleriniz, nöbet günleriniz ve deneme sonuçlarınız cihazınızda
+saklanır. Uygulama güncellemesi veya cihaz değişikliği öncesinde
+Uygulama > Rapor > "JSON Yedek İndir" butonundan yedeğinizi alabilirsiniz.
+====================================================================
