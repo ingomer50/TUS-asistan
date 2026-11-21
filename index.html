@@ -1375,7 +1375,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v15') caches.delete(k);
+              if (k !== 'tus-asistani-v16') caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1485,7 +1485,8 @@
       running: false,
       elapsedSec: 0,
       lastTickMs: null,
-      intervalId: null
+      intervalId: null,
+      activeSessionId: null
     };
 
     const nowInit = new Date();
@@ -1789,7 +1790,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
         btn.innerHTML = `<span class="dot" style="background:${sub.color};"></span><span>${sub.name}</span>`;
         btn.onclick = () => {
           if (timerState.elapsedSec >= 5 && timerState.phase === 'study') {
-            commitCurrentSegment(timerState.running);
+            commitCurrentSegment(timerState.running, true);
           }
           timerState.selectedSubject = sub.id;
           mSel.value = sub.id;
@@ -1927,6 +1928,47 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       }
     }
 
+    function ensureActiveSessionId() {
+      if (!timerState.activeSessionId) {
+        timerState.activeSessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      }
+      return timerState.activeSessionId;
+    }
+
+    function groupSessionsIntoCards(sessionsList) {
+      const groups = [];
+      const groupMap = new Map();
+      sessionsList.forEach(s => {
+        const key = s.sessionId || ('legacy_' + s.id);
+        let grp = groupMap.get(key);
+        if (!grp) {
+          grp = {
+            groupKey: key,
+            sessionId: s.sessionId || null,
+            segmentIds: [],
+            date: s.date,
+            subjectId: s.subjectId,
+            studySec: 0,
+            breakSec: 0,
+            topics: []
+          };
+          groupMap.set(key, grp);
+          groups.push(grp);
+        }
+        grp.segmentIds.push(s.id);
+        if (s.type === 'break') {
+          grp.breakSec += s.durationSec;
+        } else {
+          grp.studySec += s.durationSec;
+          grp.subjectId = s.subjectId;
+          if (s.topic && s.topic !== 'Mola' && !grp.topics.includes(s.topic)) {
+            grp.topics.push(s.topic);
+          }
+        }
+      });
+      return groups;
+    }
+
     function startStudyMode() {
       if (timerState.phase === 'study' && timerState.running) {
         return;
@@ -1935,9 +1977,10 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       if (toggle && toggle.checked && 'Notification' in window && Notification.permission === 'default') {
         requestLockScreenNotificationPermission(true).then(() => syncLockScreenNotification(true));
       }
+      ensureActiveSessionId();
       if (timerState.phase === 'break') {
         if (timerState.elapsedSec >= 1) {
-          commitCurrentSegment(false);
+          commitCurrentSegment(true, true);
         } else {
           timerState.elapsedSec = 0;
         }
@@ -1956,8 +1999,9 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
         showToast('Mola vermek için önce bir çalışma oturumu başlatın');
         return;
       }
+      ensureActiveSessionId();
       if (timerState.elapsedSec >= 1) {
-        commitCurrentSegment(false);
+        commitCurrentSegment(true, true);
       } else {
         timerState.elapsedSec = 0;
       }
@@ -1970,7 +2014,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       updateTimerUI(true);
     }
 
-    function commitCurrentSegment(keepRunning = false) {
+    function commitCurrentSegment(keepRunning = false, silentToast = false) {
       if (!keepRunning && !timerState.running && timerState.elapsedSec <= 0) {
         return;
       }
@@ -1978,10 +2022,12 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       const sec = timerState.elapsedSec;
       const topic = document.getElementById('timerTopicInput').value.trim();
       const finishedTopic = document.getElementById('topicFinishedCheck').checked;
+      const sessId = ensureActiveSessionId();
 
       if (sec >= 1) {
         state.sessions.push({
           id: Date.now() + Math.random(),
+          sessionId: sessId,
           date: todayISO(),
           subjectId: timerState.selectedSubject,
           type: timerState.phase,
@@ -2001,12 +2047,12 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
             });
           });
           document.getElementById('topicFinishedCheck').checked = false;
-          showToast('Oturum kaydedildi + 3-7-21 tekrarları eklendi');
-        } else {
-          showToast(timerState.phase === 'break' ? 'Mola süresi kaydedildi' : 'Çalışma oturumu kaydedildi');
+          if (!silentToast) showToast('Oturum kaydedildi + 3-7-21 tekrarları eklendi');
+        } else if (!silentToast) {
+          showToast(keepRunning ? 'Bölüm kaydedildi' : 'Oturum kaydedildi ve tamamlandı');
         }
         saveState();
-      } else if (!keepRunning) {
+      } else if (!keepRunning && !silentToast) {
         showToast('Oturum sıfırlandı');
       }
 
@@ -2014,6 +2060,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       if (!keepRunning) {
         timerState.running = false;
         timerState.phase = 'study';
+        timerState.activeSessionId = null;
         clearInterval(timerState.intervalId);
         ensureLockScreenSession();
         syncLockScreenNotification(true);
@@ -2023,34 +2070,43 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       renderAll();
     }
 
+    function renderSessionGroupCard(grp) {
+      const subj = SUBJECTS.find(x => x.id === grp.subjectId);
+      const title = subj ? subj.name : grp.subjectId;
+      const color = subj ? subj.color : '#38bdf8';
+      const topicText = grp.topics.join(' • ');
+      const deleteArg = grp.sessionId ? `'${grp.sessionId}'` : `${grp.segmentIds[0]}`;
+      return `
+        <div class="session-item">
+          <div class="session-meta">
+            <div>
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span>
+              <strong>${title}</strong>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:3px;font-size:12px;">
+              <span style="background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.3);color:#6ee7b7;padding:2px 8px;border-radius:6px;font-weight:600;">Ders: ${formatDuration(grp.studySec)}</span>
+              <span style="background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.3);color:#fcd34d;padding:2px 8px;border-radius:6px;font-weight:600;">Mola: ${formatDuration(grp.breakSec)}</span>
+            </div>
+            ${topicText ? `<div style="margin-top:3px;"><span class="topic-tag">Konu: ${escapeHtml(topicText)}</span></div>` : ''}
+          </div>
+          <button type="button" class="btn btn-sm" onclick="deleteSessionGroup(${deleteArg})">Sil</button>
+        </div>
+      `;
+    }
+
     function renderTodayLists() {
       const today = todayISO();
       document.getElementById('todayDateLabel').textContent = today;
       const listEl = document.getElementById('todaySessionsList');
-      const todaySessions = state.sessions.filter(s => s.date === today && s.type !== 'break').reverse();
+      const todayAllSegments = state.sessions.filter(s => s.date === today);
+      const groupedSessions = groupSessionsIntoCards(todayAllSegments)
+        .filter(g => g.studySec > 0 || g.breakSec > 0)
+        .reverse();
 
-      if (!todaySessions.length) {
-        listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">Bugün henüz kayıtlı çalışma oturumu yok.</div>`;
+      if (!groupedSessions.length) {
+        listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">Bugün henüz kayıtlı oturum yok.</div>`;
       } else {
-        listEl.innerHTML = todaySessions.map(s => {
-          const subj = SUBJECTS.find(x => x.id === s.subjectId);
-          const title = subj ? subj.name : s.subjectId;
-          const color = subj ? subj.color : '#38bdf8';
-          const hasTopic = s.topic && s.topic !== 'Mola';
-          return `
-            <div class="session-item">
-              <div class="session-meta">
-                <div>
-                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span>
-                  <strong>${title}</strong>
-                  <span style="color:var(--muted);margin-left:6px;">(${formatDuration(s.durationSec)})</span>
-                </div>
-                ${hasTopic ? `<div><span class="topic-tag">Konu: ${escapeHtml(s.topic)}</span></div>` : ''}
-              </div>
-              <button type="button" class="btn btn-sm" onclick="deleteSession(${s.id})">Sil</button>
-            </div>
-          `;
-        }).join('');
+        listEl.innerHTML = groupedSessions.map(g => renderSessionGroupCard(g)).join('');
       }
 
       const due = state.reviews.filter(r => !r.done && r.dueDate <= today);
@@ -2075,12 +2131,17 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       }
     }
 
-    window.deleteSession = function(id) {
-      state.sessions = state.sessions.filter(s => s.id !== id);
+    window.deleteSessionGroup = function(keyOrId) {
+      if (typeof keyOrId === 'string') {
+        state.sessions = state.sessions.filter(s => s.sessionId !== keyOrId);
+      } else {
+        state.sessions = state.sessions.filter(s => s.id !== keyOrId);
+      }
       saveState();
       renderAll();
-      showToast('Kayıt silindi');
+      showToast('Oturum (çalışma ve molaları) silindi');
     };
+    window.deleteSession = window.deleteSessionGroup;
 
     window.completeReview = function(id) {
       const item = state.reviews.find(r => r.id === id);
@@ -2132,28 +2193,11 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       }
 
       const listEl = document.getElementById('selectedDaySessionsList');
-      if (!studySessions.length) {
-        listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">Bu tarihte kayıtlı çalışma oturumu veya konu bulunmuyor.</div>`;
+      const groupedDaySessions = groupSessionsIntoCards(allDaySessions).filter(g => g.studySec > 0 || g.breakSec > 0);
+      if (!groupedDaySessions.length) {
+        listEl.innerHTML = `<div style="color:var(--muted);font-size:12.5px;">Bu tarihte kayıtlı oturum veya konu bulunmuyor.</div>`;
       } else {
-        listEl.innerHTML = studySessions.map(s => {
-          const subj = SUBJECTS.find(x => x.id === s.subjectId);
-          const title = subj ? subj.name : s.subjectId;
-          const color = subj ? subj.color : '#38bdf8';
-          const hasTopic = s.topic && s.topic !== 'Mola';
-          return `
-            <div class="session-item">
-              <div class="session-meta">
-                <div>
-                  <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span>
-                  <strong>${title}</strong>
-                  <span style="color:var(--muted);margin-left:6px;">(${formatDuration(s.durationSec)})</span>
-                </div>
-                ${hasTopic ? `<div><span class="topic-tag">Konu: ${escapeHtml(s.topic)}</span></div>` : ''}
-              </div>
-              <button type="button" class="btn btn-sm" onclick="deleteSession(${s.id})">Sil</button>
-            </div>
-          `;
-        }).join('');
+        listEl.innerHTML = groupedDaySessions.map(g => renderSessionGroupCard(g)).join('');
       }
 
       document.getElementById('dayNobetSelect').value = selMeta.nobet || '';
@@ -2953,6 +2997,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       }
       state.sessions.push({
         id: Date.now() + Math.random(),
+        sessionId: 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
         date: dt,
         subjectId: subjId,
         type: 'study',
