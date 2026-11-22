@@ -996,7 +996,7 @@
     <header class="topbar">
       <div class="brand-group">
         <span class="brand-title">TUS Asistanı</span>
-        <span class="version-pill" id="appVersionBadge">v22</span>
+        <span class="version-pill" id="appVersionBadge">v23</span>
         <span class="countdown-pill" id="tusCountdownText">TUS'a -- Gün</span>
       </div>
       <div class="top-actions">
@@ -1457,7 +1457,7 @@
   <div class="overlay" id="settingsModal">
     <div class="modal-box">
       <div class="card-header">
-        <div class="card-title">Hedefler & Sınav Tarihi <span class="version-pill">v22</span></div>
+        <div class="card-title">Hedefler & Sınav Tarihi <span class="version-pill">v23</span></div>
         <button type="button" class="btn btn-sm" id="btnCloseSettings">Kapat</button>
       </div>
       <div class="form-grid">
@@ -1515,7 +1515,7 @@
       { id: 'anatomi', name: 'Anatomi', group: 'Temel', color: '#c084fc' }
     ];
 
-    const APP_VERSION = 'v22';
+    const APP_VERSION = 'v23';
     const STORAGE_KEY = 'tus_asistani_data_v5';
     const ACTIVE_TIMER_KEY = 'tus_asistani_active_timer_v1';
 
@@ -1525,7 +1525,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v22') caches.delete(k);
+              if (k !== 'tus-asistani-v23') caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1896,7 +1896,13 @@
         return;
       }
 
-      if (!enabled || !timerState.running) {
+      if (!enabled) {
+        await closeTimerNotifications();
+        return;
+      }
+
+      const isActive = timerState.running || isSessionInProgress();
+      if (!isActive && !keepPausedMediaOnLockscreen) {
         await closeTimerNotifications();
         return;
       }
@@ -1904,7 +1910,8 @@
       const now = Date.now();
       const curSec = getDisplaySeconds();
       const curMin = Math.floor(curSec / 60);
-      const stateSig = `${timerState.phase}_${timerState.selectedSubject}_${curMin}`;
+      const runMode = timerState.running ? timerState.phase : 'ready';
+      const stateSig = `${runMode}_${timerState.selectedSubject}_${curMin}`;
       if (!force && stateSig === lastNotifPhase && now - lastNotifSyncTime < 45000) return;
       lastNotifPhase = stateSig;
       lastNotifSyncTime = now;
@@ -1912,20 +1919,27 @@
       const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
       const todayStats = getDayTotals(todayISO());
 
-      const title = timerState.phase === 'break'
-        ? `☕ MOLADA • ${formatDuration(curSec)}`
-        : `▶ ${subj} • ${formatDuration(curSec)}`;
+      let title = `⏸ HAZIR • ${subj}`;
+      let body = `▶ Başlat • Bugün Ders: ${formatDuration(todayStats.studySec)}`;
+      let actions = [
+        { action: 'start', title: '▶ Başlat' }
+      ];
 
-      const body = `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`;
-      const actions = timerState.phase === 'break'
-        ? [
-            { action: 'start', title: '▶ Derse Dön' },
-            { action: 'save', title: '✅ Kaydet & Bitir' }
-          ]
-        : [
-            { action: 'break', title: '☕ Mola Ver' },
-            { action: 'save', title: '✅ Kaydet & Bitir' }
-          ];
+      if (timerState.running && timerState.phase === 'break') {
+        title = `☕ MOLADA • ${formatDuration(curSec)}`;
+        body = `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`;
+        actions = [
+          { action: 'start', title: '▶ Derse Dön' },
+          { action: 'save', title: '✅ Kaydet' }
+        ];
+      } else if (timerState.running && timerState.phase === 'study') {
+        title = `▶ ${subj} • ${formatDuration(curSec)}`;
+        body = `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`;
+        actions = [
+          { action: 'break', title: '☕ Mola Ver' },
+          { action: 'save', title: '✅ Kaydet' }
+        ];
+      }
 
       try {
         if ('serviceWorker' in navigator) {
@@ -1957,6 +1971,50 @@
       }
     }
 
+    function registerMediaSessionHandlers() {
+      if (!('mediaSession' in navigator)) return;
+      const safeSet = (action, fn) => {
+        try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {}
+      };
+      safeSet('play', () => {
+        startStudyMode();
+      });
+      safeSet('pause', () => {
+        if (timerState.phase === 'break' && timerState.running) {
+          startStudyMode();
+        } else if (timerState.phase === 'study' && timerState.running) {
+          startBreakMode();
+        } else {
+          startStudyMode();
+        }
+      });
+      safeSet('previoustrack', () => {
+        startStudyMode();
+      });
+      safeSet('seekbackward', () => {
+        startStudyMode();
+      });
+      safeSet('nexttrack', () => {
+        if (isSessionInProgress()) {
+          commitCurrentSegment(false);
+        } else {
+          startStudyMode();
+        }
+      });
+      safeSet('seekforward', () => {
+        if (isSessionInProgress()) {
+          commitCurrentSegment(false);
+        } else {
+          startStudyMode();
+        }
+      });
+      safeSet('stop', () => {
+        if (isSessionInProgress()) {
+          commitCurrentSegment(false);
+        }
+      });
+    }
+
     function ensureLockScreenSession() {
       const toggle = document.getElementById('lockscreenToggle');
       if (!toggle || !toggle.checked) {
@@ -1971,6 +2029,7 @@
         }
         silentAudioEl.muted = false;
         silentAudioEl.volume = 0.01;
+        registerMediaSessionHandlers();
 
         if (timerState.running) {
           keepPausedMediaOnLockscreen = true;
@@ -1978,35 +2037,15 @@
           if (playPromise && typeof playPromise.then === 'function') {
             playPromise.then(() => updateLockScreenMetadata(true)).catch(() => {});
           }
+        } else if (keepPausedMediaOnLockscreen) {
+          // Oturum kaydedildikten sonra da Samsung One UI kilit ekranı ve AOD medya kartının
+          // kaybolmaması için medya oturumunu duraklatılmış (paused) halde canlı tutar
+          silentAudioEl.pause();
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'paused';
+          }
         } else {
           silentAudioEl.pause();
-        }
-        if ('mediaSession' in navigator) {
-          navigator.mediaSession.setActionHandler('play', () => {
-            startStudyMode();
-          });
-          navigator.mediaSession.setActionHandler('pause', () => {
-            if (timerState.phase === 'break' && timerState.running) {
-              startStudyMode();
-            } else if (timerState.phase === 'study' && timerState.running) {
-              startBreakMode();
-            } else {
-              startStudyMode();
-            }
-          });
-          navigator.mediaSession.setActionHandler('previoustrack', () => {
-            startStudyMode();
-          });
-          navigator.mediaSession.setActionHandler('nexttrack', () => {
-            if (timerState.running || timerState.elapsedSec > 0) {
-              commitCurrentSegment(false);
-            }
-          });
-          navigator.mediaSession.setActionHandler('stop', () => {
-            if (timerState.running || timerState.elapsedSec > 0) {
-              commitCurrentSegment(false);
-            }
-          });
         }
       } catch (e) {}
     }
@@ -2520,6 +2559,20 @@
         saveActiveTimerState();
       }
       renderAll();
+    document.addEventListener('pointerdown', function initMediaOnFirstTap() {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && !silentAudioEl) {
+        keepPausedMediaOnLockscreen = true;
+        ensureLockScreenSession();
+        if (silentAudioEl) {
+          silentAudioEl.play().then(() => {
+            if (!timerState.running) silentAudioEl.pause();
+            updateLockScreenMetadata(true);
+          }).catch(() => {});
+        }
+      }
+      document.removeEventListener('pointerdown', initMediaOnFirstTap);
+    }, { passive: true });
     }
 
     function renderSessionGroupCard(grp) {
@@ -2574,6 +2627,20 @@
       }
       saveState();
       renderAll();
+    document.addEventListener('pointerdown', function initMediaOnFirstTap() {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && !silentAudioEl) {
+        keepPausedMediaOnLockscreen = true;
+        ensureLockScreenSession();
+        if (silentAudioEl) {
+          silentAudioEl.play().then(() => {
+            if (!timerState.running) silentAudioEl.pause();
+            updateLockScreenMetadata(true);
+          }).catch(() => {});
+        }
+      }
+      document.removeEventListener('pointerdown', initMediaOnFirstTap);
+    }, { passive: true });
       showToast('Oturum (çalışma ve molaları) silindi');
     };
     window.deleteSession = window.deleteSessionGroup;
@@ -2584,6 +2651,20 @@
         item.done = !item.done;
         saveState();
         renderAll();
+    document.addEventListener('pointerdown', function initMediaOnFirstTap() {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && !silentAudioEl) {
+        keepPausedMediaOnLockscreen = true;
+        ensureLockScreenSession();
+        if (silentAudioEl) {
+          silentAudioEl.play().then(() => {
+            if (!timerState.running) silentAudioEl.pause();
+            updateLockScreenMetadata(true);
+          }).catch(() => {});
+        }
+      }
+      document.removeEventListener('pointerdown', initMediaOnFirstTap);
+    }, { passive: true });
         showToast(item.done ? 'Tekrar tamamlandı işaretlendi' : 'Tekrar işareti kaldırıldı');
       }
     };
@@ -3686,6 +3767,20 @@
       document.getElementById('manualNoteInput').value = '';
       saveState();
       renderAll();
+    document.addEventListener('pointerdown', function initMediaOnFirstTap() {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && !silentAudioEl) {
+        keepPausedMediaOnLockscreen = true;
+        ensureLockScreenSession();
+        if (silentAudioEl) {
+          silentAudioEl.play().then(() => {
+            if (!timerState.running) silentAudioEl.pause();
+            updateLockScreenMetadata(true);
+          }).catch(() => {});
+        }
+      }
+      document.removeEventListener('pointerdown', initMediaOnFirstTap);
+    }, { passive: true });
       showToast('Manuel çalışma eklendi');
     };
 
@@ -3724,6 +3819,20 @@
       };
       saveState();
       renderAll();
+    document.addEventListener('pointerdown', function initMediaOnFirstTap() {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && !silentAudioEl) {
+        keepPausedMediaOnLockscreen = true;
+        ensureLockScreenSession();
+        if (silentAudioEl) {
+          silentAudioEl.play().then(() => {
+            if (!timerState.running) silentAudioEl.pause();
+            updateLockScreenMetadata(true);
+          }).catch(() => {});
+        }
+      }
+      document.removeEventListener('pointerdown', initMediaOnFirstTap);
+    }, { passive: true });
       showToast('Günün notu ve nöbet bilgisi kaydedildi');
     };
 
@@ -3790,6 +3899,20 @@
             state = sanitizeLoadedState(parsed);
             saveState();
             renderAll();
+    document.addEventListener('pointerdown', function initMediaOnFirstTap() {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && !silentAudioEl) {
+        keepPausedMediaOnLockscreen = true;
+        ensureLockScreenSession();
+        if (silentAudioEl) {
+          silentAudioEl.play().then(() => {
+            if (!timerState.running) silentAudioEl.pause();
+            updateLockScreenMetadata(true);
+          }).catch(() => {});
+        }
+      }
+      document.removeEventListener('pointerdown', initMediaOnFirstTap);
+    }, { passive: true });
             showToast('Yedek başarıyla geri yüklendi');
           } else {
             showToast('Geçersiz yedek formatı');
@@ -3816,6 +3939,20 @@
       state.settings.monthlyGoalHours = parseFloat(document.getElementById('settingMonthlyGoal').value) || 220;
       saveState();
       renderAll();
+    document.addEventListener('pointerdown', function initMediaOnFirstTap() {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && !silentAudioEl) {
+        keepPausedMediaOnLockscreen = true;
+        ensureLockScreenSession();
+        if (silentAudioEl) {
+          silentAudioEl.play().then(() => {
+            if (!timerState.running) silentAudioEl.pause();
+            updateLockScreenMetadata(true);
+          }).catch(() => {});
+        }
+      }
+      document.removeEventListener('pointerdown', initMediaOnFirstTap);
+    }, { passive: true });
       document.getElementById('settingsModal').classList.remove('open');
       showToast('Ayarlar kaydedildi');
     };
@@ -3878,6 +4015,20 @@
       } catch (e) {}
     })();
     renderAll();
+    document.addEventListener('pointerdown', function initMediaOnFirstTap() {
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle && toggle.checked && !silentAudioEl) {
+        keepPausedMediaOnLockscreen = true;
+        ensureLockScreenSession();
+        if (silentAudioEl) {
+          silentAudioEl.play().then(() => {
+            if (!timerState.running) silentAudioEl.pause();
+            updateLockScreenMetadata(true);
+          }).catch(() => {});
+        }
+      }
+      document.removeEventListener('pointerdown', initMediaOnFirstTap);
+    }, { passive: true });
   </script>
 </body>
 </html>
