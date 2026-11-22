@@ -35,17 +35,13 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   const action = event.action || 'focus';
-  if (action === 'focus') {
-    event.notification.close();
-  }
+  event.notification.close();
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       if (clientList.length > 0) {
         for (const client of clientList) {
           client.postMessage({ type: 'TUS_NOTIFICATION_ACTION', action });
         }
-        // Sadece bildirimin gövdesine (focus) basıldığında ekranı aç;
-        // 'start', 'break', 'save' butonlarına basıldığında telefon kilidini açmadan arka planda çalıştır!
         if (action === 'focus' && 'focus' in clientList[0]) {
           return clientList[0].focus();
         }
