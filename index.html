@@ -202,11 +202,27 @@
       border-color: var(--primary);
       color: var(--text);
     }
-    .tab-pane {
-      display: none;
+    .tabs-viewport {
+      overflow: hidden;
+      width: 100%;
+      position: relative;
+      touch-action: pan-y;
     }
-    .tab-pane.active {
-      display: block;
+    .tabs-track {
+      display: flex;
+      width: 300%;
+      transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform;
+      align-items: flex-start;
+    }
+    .tabs-track.dragging {
+      transition: none;
+    }
+    .tab-pane {
+      width: 33.333333%;
+      flex-shrink: 0;
+      padding: 0 1px;
+      min-width: 0;
     }
     .card {
       background: var(--surface);
@@ -600,7 +616,7 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       min-height: 54px;
-      padding: 4px;
+      padding: 3px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -624,18 +640,77 @@
       background: var(--rose-bg);
       border-color: var(--rose);
     }
+    .cal-cell.has-review {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(245, 158, 11, 0.17),
+        rgba(245, 158, 11, 0.17) 5px,
+        transparent 5px,
+        transparent 10px
+      );
+      border-color: rgba(245, 158, 11, 0.6);
+    }
+    .cal-cell.nobet.has-review {
+      background-color: var(--rose-bg);
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(245, 158, 11, 0.22),
+        rgba(245, 158, 11, 0.22) 5px,
+        transparent 5px,
+        transparent 10px
+      );
+      border-color: var(--rose);
+    }
     .cal-day-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 11.5px;
+      gap: 1px;
+      font-size: 10.5px;
       font-weight: 700;
+    }
+    .cal-day-num-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+    .cal-badge-n {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #be123c;
+      color: #ffffff;
+      font-size: 8px;
+      font-weight: 900;
+      line-height: 1;
+      padding: 1.5px 2.5px;
+      border-radius: 3px;
+    }
+    .cal-badge-t {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(245, 158, 11, 0.28);
+      border: 1px solid var(--amber);
+      color: #fcd34d;
+      font-size: 8px;
+      font-weight: 900;
+      line-height: 1;
+      padding: 1px 2.5px;
+      border-radius: 3px;
+    }
+    .cal-badge-t.all-done {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: var(--emerald);
+      color: #6ee7b7;
     }
     .note-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--amber);
+      background: #38bdf8;
       flex-shrink: 0;
     }
     .cal-hours {
@@ -645,13 +720,20 @@
       color: var(--emerald);
       text-align: center;
       word-break: break-word;
+      margin-top: 2px;
     }
-    .cal-nobet-tag {
-      font-size: 9px;
-      font-weight: 800;
-      color: #fda4af;
-      text-align: center;
-      letter-spacing: 0.3px;
+    .topic-done-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(16, 185, 129, 0.16);
+      border: 1px solid rgba(16, 185, 129, 0.38);
+      color: #6ee7b7;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      margin-left: 4px;
     }
     .selected-day-panel {
       margin-top: 12px;
@@ -884,6 +966,8 @@
       </button>
     </nav>
 
+    <div class="tabs-viewport" id="tabsViewport">
+      <div class="tabs-track" id="tabsTrack">
     <!-- TAB 1: KRONOMETRE & MANUEL ÇALIŞMA EKLE -->
     <section id="timerTab" class="tab-pane active">
       <div class="home-summary-bar">
@@ -977,17 +1061,6 @@
         </div>
       </div>
 
-      <!-- Spaced Repetition Due Card -->
-      <div class="card" id="reviewsCard" style="display:none;">
-        <div class="card-header">
-          <div class="card-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span>Bugünün Tekrarları (3 - 7 - 21 Gün)</span>
-          </div>
-        </div>
-        <div id="dueReviewsList"></div>
-      </div>
-
       <!-- Manual Study Entry Card -->
       <div class="card">
         <div class="card-header">
@@ -1067,6 +1140,11 @@
           <div class="day-summary-pills" id="selectedDaySummaryChips"></div>
 
           <div id="selectedDaySavedNoteBox" class="saved-note-box" style="display:none;"></div>
+
+          <div id="selectedDayReviewsBox" style="margin-bottom:12px;display:none;">
+            <div class="sub-label" style="color:var(--amber);">O Günün 3 - 7 - 21 Gün Tekrarları</div>
+            <div id="selectedDayReviewsList"></div>
+          </div>
 
           <div style="margin-bottom:12px;">
             <div class="sub-label">O Günün Oturumları & Çalışılan Konular</div>
@@ -1264,6 +1342,8 @@
         <div id="examHistoryList"></div>
       </div>
     </section>
+      </div>
+    </div>
   </div>
 
   <!-- REPORT & EXPORT MODAL -->
@@ -1375,7 +1455,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v16') caches.delete(k);
+              if (k !== 'tus-asistani-v18') caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1950,12 +2030,14 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
             subjectId: s.subjectId,
             studySec: 0,
             breakSec: 0,
-            topics: []
+            topics: [],
+            topicFinished: false
           };
           groupMap.set(key, grp);
           groups.push(grp);
         }
         grp.segmentIds.push(s.id);
+        if (s.topicFinished) grp.topicFinished = true;
         if (s.type === 'break') {
           grp.breakSec += s.durationSec;
         } else {
@@ -2020,8 +2102,10 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       }
       if (timerState.running) tickTimer();
       const sec = timerState.elapsedSec;
-      const topic = document.getElementById('timerTopicInput').value.trim();
-      const finishedTopic = document.getElementById('topicFinishedCheck').checked;
+      const topicEl = document.getElementById('timerTopicInput');
+      const finishCheckEl = document.getElementById('topicFinishedCheck');
+      const topic = topicEl ? topicEl.value.trim() : '';
+      const finishedTopic = finishCheckEl ? finishCheckEl.checked : false;
       const sessId = ensureActiveSessionId();
 
       if (sec >= 1) {
@@ -2032,32 +2116,50 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
           subjectId: timerState.selectedSubject,
           type: timerState.phase,
           durationSec: sec,
-          topic: timerState.phase === 'study' ? topic : 'Mola'
+          topic: timerState.phase === 'study' ? topic : 'Mola',
+          topicFinished: !keepRunning && finishedTopic && Boolean(topic)
         });
-
-        if (timerState.phase === 'study' && finishedTopic && topic) {
-          [3, 7, 21].forEach(days => {
-            state.reviews.push({
-              id: Date.now() + Math.random(),
-              subjectId: timerState.selectedSubject,
-              topic: topic,
-              dueDate: addDaysISO(todayISO(), days),
-              intervalLabel: `${days}. Gün Tekrarı`,
-              done: false
-            });
-          });
-          document.getElementById('topicFinishedCheck').checked = false;
-          if (!silentToast) showToast('Oturum kaydedildi + 3-7-21 tekrarları eklendi');
-        } else if (!silentToast) {
-          showToast(keepRunning ? 'Bölüm kaydedildi' : 'Oturum kaydedildi ve tamamlandı');
-        }
-        saveState();
-      } else if (!keepRunning && !silentToast) {
-        showToast('Oturum sıfırlandı');
       }
 
-      timerState.elapsedSec = 0;
       if (!keepRunning) {
+        // Kaydet & Bitir basıldığında oturumdaki tüm çalışma dilimlerini güncel konu adı ve bitirme durumuyla senkronize et
+        const sessionSegments = state.sessions.filter(s => s.sessionId === sessId);
+        const hasAnyStudy = sessionSegments.some(s => s.type !== 'break' && s.durationSec >= 1);
+
+        if (sessionSegments.length > 0 && hasAnyStudy) {
+          sessionSegments.forEach(s => {
+            if (s.type !== 'break') {
+              if (topic) s.topic = topic;
+              s.topicFinished = finishedTopic && Boolean(topic);
+            }
+          });
+
+          if (finishedTopic && topic) {
+            [3, 7, 21].forEach(days => {
+              state.reviews.push({
+                id: Date.now() + Math.random(),
+                sourceSessionId: sessId,
+                subjectId: timerState.selectedSubject,
+                topic: topic,
+                dueDate: addDaysISO(todayISO(), days),
+                intervalDays: days,
+                intervalLabel: `${days}. Gün Tekrarı`,
+                done: false
+              });
+            });
+            if (!silentToast) showToast('Oturum kaydedildi + Takvime 3-7-21 tekrarları eklendi');
+          } else if (!silentToast) {
+            showToast('Oturum kaydedildi ve tamamlandı');
+          }
+          saveState();
+        } else if (!silentToast) {
+          showToast('Oturum sıfırlandı');
+        }
+
+        if (topicEl) topicEl.value = '';
+        if (finishCheckEl) finishCheckEl.checked = false;
+
+        timerState.elapsedSec = 0;
         timerState.running = false;
         timerState.phase = 'study';
         timerState.activeSessionId = null;
@@ -2065,6 +2167,8 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
         ensureLockScreenSession();
         syncLockScreenNotification(true);
       } else {
+        if (sec >= 1) saveState();
+        timerState.elapsedSec = 0;
         timerState.lastTickMs = Date.now();
       }
       renderAll();
@@ -2076,6 +2180,9 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       const color = subj ? subj.color : '#38bdf8';
       const topicText = grp.topics.join(' • ');
       const deleteArg = grp.sessionId ? `'${grp.sessionId}'` : `${grp.segmentIds[0]}`;
+      const doneBadge = grp.topicFinished
+        ? `<span class="topic-done-badge">✓ Konu bitti</span>`
+        : '';
       return `
         <div class="session-item">
           <div class="session-meta">
@@ -2087,7 +2194,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
               <span style="background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.3);color:#6ee7b7;padding:2px 8px;border-radius:6px;font-weight:600;">Ders: ${formatDuration(grp.studySec)}</span>
               <span style="background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.3);color:#fcd34d;padding:2px 8px;border-radius:6px;font-weight:600;">Mola: ${formatDuration(grp.breakSec)}</span>
             </div>
-            ${topicText ? `<div style="margin-top:3px;"><span class="topic-tag">Konu: ${escapeHtml(topicText)}</span></div>` : ''}
+            ${topicText ? `<div style="margin-top:3px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;"><span class="topic-tag">Konu: ${escapeHtml(topicText)}</span>${doneBadge}</div>` : ''}
           </div>
           <button type="button" class="btn btn-sm" onclick="deleteSessionGroup(${deleteArg})">Sil</button>
         </div>
@@ -2108,32 +2215,12 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       } else {
         listEl.innerHTML = groupedSessions.map(g => renderSessionGroupCard(g)).join('');
       }
-
-      const due = state.reviews.filter(r => !r.done && r.dueDate <= today);
-      const revCard = document.getElementById('reviewsCard');
-      const revList = document.getElementById('dueReviewsList');
-      if (!due.length) {
-        revCard.style.display = 'none';
-      } else {
-        revCard.style.display = 'block';
-        revList.innerHTML = due.map(r => {
-          const subj = SUBJECTS.find(x => x.id === r.subjectId);
-          return `
-            <div class="session-item">
-              <div class="session-meta">
-                <div><strong>${subj ? subj.name : ''}</strong> • ${escapeHtml(r.topic)}</div>
-                <div style="font-size:11.5px;color:var(--amber);">${r.intervalLabel} (${r.dueDate})</div>
-              </div>
-              <button type="button" class="btn btn-emerald btn-sm" onclick="completeReview(${r.id})">Tamamlandı</button>
-            </div>
-          `;
-        }).join('');
-      }
     }
 
     window.deleteSessionGroup = function(keyOrId) {
       if (typeof keyOrId === 'string') {
         state.sessions = state.sessions.filter(s => s.sessionId !== keyOrId);
+        state.reviews = state.reviews.filter(r => r.sourceSessionId !== keyOrId);
       } else {
         state.sessions = state.sessions.filter(s => s.id !== keyOrId);
       }
@@ -2143,12 +2230,14 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
     };
     window.deleteSession = window.deleteSessionGroup;
 
-    window.completeReview = function(id) {
+    window.toggleReviewDone = function(id) {
       const item = state.reviews.find(r => r.id === id);
-      if (item) item.done = true;
-      saveState();
-      renderAll();
-      showToast('Tekrar tamamlandı');
+      if (item) {
+        item.done = !item.done;
+        saveState();
+        renderAll();
+        showToast(item.done ? 'Tekrar tamamlandı işaretlendi' : 'Tekrar işareti kaldırıldı');
+      }
     };
 
     const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -2190,6 +2279,35 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
         noteBox.innerHTML = `<strong>O Günün Notu:</strong>\n${escapeHtml(selMeta.note)}`;
       } else {
         noteBox.style.display = 'none';
+      }
+
+      const dayReviews = state.reviews.filter(r => r.dueDate === selectedDateISO);
+      const revBox = document.getElementById('selectedDayReviewsBox');
+      const revListEl = document.getElementById('selectedDayReviewsList');
+      if (!dayReviews.length) {
+        revBox.style.display = 'none';
+        revListEl.innerHTML = '';
+      } else {
+        revBox.style.display = 'block';
+        revListEl.innerHTML = dayReviews.map(r => {
+          const subj = SUBJECTS.find(x => x.id === r.subjectId);
+          const subjName = subj ? subj.name : '';
+          const color = subj ? subj.color : '#f59e0b';
+          return `
+            <label class="session-item" style="cursor:pointer;align-items:center;border-color:${r.done ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.45)'};background:${r.done ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'};">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                <input type="checkbox" ${r.done ? 'checked' : ''} onchange="toggleReviewDone(${r.id})" style="width:18px;height:18px;accent-color:var(--emerald);flex-shrink:0;cursor:pointer;" />
+                <div class="session-meta" style="${r.done ? 'opacity:0.65;text-decoration:line-through;' : ''}">
+                  <div style="font-weight:700;color:${r.done ? '#6ee7b7' : '#fcd34d'};">
+                    ${escapeHtml(r.intervalLabel)}: ${escapeHtml(r.topic)}
+                  </div>
+                  ${subjName ? `<div style="font-size:11.5px;color:var(--muted);"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${color};margin-right:5px;"></span>${subjName}</div>` : ''}
+                </div>
+              </div>
+              <span style="font-size:11px;font-weight:700;color:${r.done ? 'var(--emerald)' : 'var(--amber)'};">${r.done ? 'Yapıldı' : 'Bekliyor'}</span>
+            </label>
+          `;
+        }).join('');
       }
 
       const listEl = document.getElementById('selectedDaySessionsList');
@@ -2235,6 +2353,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
                 subjectName: subj ? subj.name : s.subjectId,
                 subjectColor: subj ? subj.color : '#38bdf8',
                 durationSec: s.durationSec,
+                topicFinished: Boolean(s.topicFinished),
                 text: s.topic.trim()
               });
             }
@@ -2280,7 +2399,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
                 <strong>${it.subjectName}</strong>
                 <span style="color:var(--muted);margin-left:6px;">• ${it.date} (${formatDuration(it.durationSec)})</span>
               </div>
-              <div><span class="topic-tag">Konu: ${escapeHtml(it.text)}</span></div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;"><span class="topic-tag">Konu: ${escapeHtml(it.text)}</span>${it.topicFinished ? '<span class="topic-done-badge">✓ Konu bitti</span>' : ''}</div>
             </div>
           </div>
         `;
@@ -2336,19 +2455,27 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
           nonNobetStudySec += daySec;
         }
 
+        const dayRevs = state.reviews.filter(r => r.dueDate === iso);
+        const hasReview = dayRevs.length > 0;
+        const allRevsDone = hasReview && dayRevs.every(r => r.done);
+
         const cell = document.createElement('div');
         cell.className = 'cal-cell'
           + (iso === today ? ' today' : '')
           + (iso === selectedDateISO ? ' selected' : '')
-          + (meta.nobet ? ' nobet' : '');
+          + (meta.nobet ? ' nobet' : '')
+          + (hasReview ? ' has-review' : '');
 
         const hrsText = formatCalDuration(daySec);
         cell.innerHTML = `
           <div class="cal-day-top">
-            <span>${d}</span>
+            <span class="cal-day-num-wrap">
+              <span>${d}</span>
+              ${meta.nobet ? '<span class="cal-badge-n">N</span>' : ''}
+              ${hasReview ? `<span class="cal-badge-t ${allRevsDone ? 'all-done' : ''}">T</span>` : ''}
+            </span>
             ${meta.note ? '<span class="note-dot"></span>' : ''}
           </div>
-          ${meta.nobet ? '<div class="cal-nobet-tag">NÖBET</div>' : ''}
           <div class="cal-hours">${hrsText}</div>
         `;
 
@@ -2901,18 +3028,120 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       renderTodayLists();
       renderMonthlyTab();
       renderExamsTab();
+      requestAnimationFrame(syncTabsViewportHeight);
+    }
+    window.addEventListener('resize', syncTabsViewportHeight);
+
+    const TAB_ORDER = ['timerTab', 'monthlyTab', 'examsTab'];
+    let currentTabIdx = 0;
+
+    function syncTabsViewportHeight() {
+      const viewport = document.getElementById('tabsViewport');
+      const panes = document.querySelectorAll('.tab-pane');
+      if (!viewport || !panes[currentTabIdx]) return;
+      viewport.style.height = panes[currentTabIdx].offsetHeight + 'px';
     }
 
-    document.querySelectorAll('.nav-tab').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById(btn.dataset.tab).classList.add('active');
-        if (btn.dataset.tab === 'monthlyTab') renderMonthlyTab();
-        if (btn.dataset.tab === 'examsTab') renderExamsTab();
-      };
+    function switchToTabIndex(idx, instant = false) {
+      idx = Math.max(0, Math.min(TAB_ORDER.length - 1, idx));
+      currentTabIdx = idx;
+      const tabId = TAB_ORDER[idx];
+      const track = document.getElementById('tabsTrack');
+      const navBtns = document.querySelectorAll('.nav-tab');
+      const panes = document.querySelectorAll('.tab-pane');
+
+      navBtns.forEach((b, i) => b.classList.toggle('active', i === idx));
+      panes.forEach((p, i) => p.classList.toggle('active', i === idx));
+
+      if (tabId === 'monthlyTab') renderMonthlyTab();
+      if (tabId === 'examsTab') renderExamsTab();
+
+      if (track) {
+        if (instant) track.classList.add('dragging');
+        track.style.transform = `translate3d(-${idx * (100 / TAB_ORDER.length)}%, 0, 0)`;
+        if (instant) {
+          track.offsetHeight;
+          track.classList.remove('dragging');
+        }
+      }
+      requestAnimationFrame(syncTabsViewportHeight);
+    }
+
+    document.querySelectorAll('.nav-tab').forEach((btn, idx) => {
+      btn.onclick = () => switchToTabIndex(idx, false);
     });
+
+    (function initTabSwipeGesture() {
+      const viewport = document.getElementById('tabsViewport');
+      const track = document.getElementById('tabsTrack');
+      if (!viewport || !track) return;
+
+      let startX = 0;
+      let startY = 0;
+      let deltaX = 0;
+      let isSwiping = false;
+      let directionLocked = false;
+
+      viewport.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        const tag = e.target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (e.target.closest && e.target.closest('#examChartContainer')) return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        deltaX = 0;
+        isSwiping = false;
+        directionLocked = false;
+      }, { passive: true });
+
+      viewport.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+
+        if (!directionLocked) {
+          if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+          directionLocked = true;
+          isSwiping = Math.abs(dx) > Math.abs(dy) * 1.15;
+          if (isSwiping) {
+            track.classList.add('dragging');
+            viewport.style.height = 'auto';
+          }
+        }
+
+        if (!isSwiping) return;
+        deltaX = dx;
+        // Kenarlarda direnç efekti (Android launcher overscroll hissi)
+        let effectiveDx = deltaX;
+        if ((currentTabIdx === 0 && deltaX > 0) || (currentTabIdx === TAB_ORDER.length - 1 && deltaX < 0)) {
+          effectiveDx = deltaX * 0.28;
+        }
+        const viewportW = viewport.offsetWidth || window.innerWidth;
+        const basePercent = -currentTabIdx * (100 / TAB_ORDER.length);
+        const dragPercent = (effectiveDx / viewportW) * (100 / TAB_ORDER.length);
+        track.style.transform = `translate3d(${basePercent + dragPercent}%, 0, 0)`;
+      }, { passive: true });
+
+      function endSwipe() {
+        if (!isSwiping) return;
+        track.classList.remove('dragging');
+        const viewportW = viewport.offsetWidth || window.innerWidth;
+        const threshold = Math.min(75, viewportW * 0.18);
+        let targetIdx = currentTabIdx;
+        if (deltaX < -threshold && currentTabIdx < TAB_ORDER.length - 1) {
+          targetIdx = currentTabIdx + 1;
+        } else if (deltaX > threshold && currentTabIdx > 0) {
+          targetIdx = currentTabIdx - 1;
+        }
+        switchToTabIndex(targetIdx, false);
+        isSwiping = false;
+        directionLocked = false;
+        deltaX = 0;
+      }
+
+      viewport.addEventListener('touchend', endSwipe, { passive: true });
+      viewport.addEventListener('touchcancel', endSwipe, { passive: true });
+    })();
 
     document.getElementById('modeStopwatch').onclick = () => {
       timerState.mode = 'stopwatch';
