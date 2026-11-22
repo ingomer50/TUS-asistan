@@ -91,6 +91,17 @@
       color: var(--text);
       letter-spacing: -0.2px;
     }
+    .version-pill {
+      background: rgba(16, 185, 129, 0.16);
+      border: 1px solid rgba(16, 185, 129, 0.42);
+      color: #6ee7b7;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 6px;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
     .countdown-pill {
       background: rgba(56, 189, 248, 0.14);
       border: 1px solid rgba(56, 189, 248, 0.35);
@@ -932,6 +943,7 @@
     <header class="topbar">
       <div class="brand-group">
         <span class="brand-title">TUS Asistanı</span>
+        <span class="version-pill" id="appVersionBadge">v20</span>
         <span class="countdown-pill" id="tusCountdownText">TUS'a -- Gün</span>
       </div>
       <div class="top-actions">
@@ -1392,7 +1404,7 @@
   <div class="overlay" id="settingsModal">
     <div class="modal-box">
       <div class="card-header">
-        <div class="card-title">Hedefler & Sınav Tarihi</div>
+        <div class="card-title">Hedefler & Sınav Tarihi <span class="version-pill">v20</span></div>
         <button type="button" class="btn btn-sm" id="btnCloseSettings">Kapat</button>
       </div>
       <div class="form-grid">
@@ -1450,7 +1462,9 @@
       { id: 'anatomi', name: 'Anatomi', group: 'Temel', color: '#c084fc' }
     ];
 
+    const APP_VERSION = 'v20';
     const STORAGE_KEY = 'tus_asistani_data_v5';
+    const ACTIVE_TIMER_KEY = 'tus_asistani_active_timer_v1';
     const ICON_DATA_URI = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='42' fill='%230b0f19'/><circle cx='96' cy='100' r='62' fill='none' stroke='%231e293b' stroke-width='8'/><path d='M96 38 A62 62 0 1 1 38 122' fill='none' stroke='%2338bdf8' stroke-width='8' stroke-linecap='round'/><rect x='84' y='24' width='24' height='8' rx='4' fill='%2338bdf8'/><path d='M52 96 H72 L80 82 L88 112 L96 72 L104 118 L112 88 L120 96 H140' fill='none' stroke='%2310b981' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/><text x='96' y='142' text-anchor='middle' fill='%23f8fafc' font-family='sans-serif' font-weight='800' font-size='26'>TUS</text></svg>";
 
     // Network-First Service Worker kaydı ve eski önbellek temizliği (GitHub Pages uyumlu)
@@ -1459,7 +1473,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v19') caches.delete(k);
+              if (k !== 'tus-asistani-v20') caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1520,7 +1534,8 @@
       settings: {
         tusDate: '2027-08-15',
         dailyGoalHours: 8,
-        monthlyGoalHours: 220
+        monthlyGoalHours: 220,
+        lockscreenNotif: true
       },
       sessions: [],
       dayMeta: {},
@@ -1618,15 +1633,108 @@
       return 'data:audio/wav;base64,' + btoa(bin);
     }
 
+    function saveActiveTimerState() {
+      try {
+        const topicEl = document.getElementById('timerTopicInput');
+        const finishEl = document.getElementById('topicFinishedCheck');
+        const payload = {
+          selectedSubject: timerState.selectedSubject,
+          mode: timerState.mode,
+          countdownTargetSec: timerState.countdownTargetSec,
+          phase: timerState.phase,
+          running: timerState.running,
+          baseElapsedSec: timerState.elapsedSec,
+          anchorMs: timerState.running ? (timerState.lastTickMs || Date.now()) : null,
+          activeSessionId: timerState.activeSessionId,
+          topic: topicEl ? topicEl.value : '',
+          topicFinished: finishEl ? finishEl.checked : false
+        };
+        localStorage.setItem(ACTIVE_TIMER_KEY, JSON.stringify(payload));
+      } catch (e) {}
+    }
+
+    function clearActiveTimerState() {
+      try {
+        localStorage.removeItem(ACTIVE_TIMER_KEY);
+      } catch (e) {}
+    }
+
+    function restoreActiveTimerState() {
+      try {
+        const raw = localStorage.getItem(ACTIVE_TIMER_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (!saved || typeof saved !== 'object') return;
+
+        if (saved.selectedSubject && SUBJECTS.some(s => s.id === saved.selectedSubject)) {
+          timerState.selectedSubject = saved.selectedSubject;
+        }
+        if (saved.mode === 'countdown' || saved.mode === 'stopwatch') {
+          timerState.mode = saved.mode;
+        }
+        if (typeof saved.countdownTargetSec === 'number' && saved.countdownTargetSec >= 60) {
+          timerState.countdownTargetSec = saved.countdownTargetSec;
+        }
+        if (saved.phase === 'study' || saved.phase === 'break') {
+          timerState.phase = saved.phase;
+        }
+        timerState.activeSessionId = saved.activeSessionId || null;
+
+        const topicEl = document.getElementById('timerTopicInput');
+        const finishEl = document.getElementById('topicFinishedCheck');
+        if (topicEl && typeof saved.topic === 'string') topicEl.value = saved.topic;
+        if (finishEl) finishEl.checked = Boolean(saved.topicFinished);
+
+        // Sync mode UI buttons
+        const isCd = timerState.mode === 'countdown';
+        const swBtn = document.getElementById('modeStopwatch');
+        const cdBtn = document.getElementById('modeCountdown');
+        const cdPresets = document.getElementById('countdownPresets');
+        const customCdInput = document.getElementById('customCountdownMin');
+        if (swBtn) swBtn.classList.toggle('active', !isCd);
+        if (cdBtn) cdBtn.classList.toggle('active', isCd);
+        if (cdPresets) cdPresets.classList.toggle('show', isCd);
+        if (customCdInput) customCdInput.value = Math.round(timerState.countdownTargetSec / 60);
+
+        let restoredSec = Math.max(0, Math.floor(Number(saved.baseElapsedSec) || 0));
+        if (saved.running && typeof saved.anchorMs === 'number' && saved.anchorMs > 0) {
+          const extraSec = Math.max(0, Math.floor((Date.now() - saved.anchorMs) / 1000));
+          restoredSec += extraSec;
+          timerState.elapsedSec = restoredSec;
+          timerState.running = true;
+          timerState.lastTickMs = Date.now();
+
+          if (timerState.phase === 'study' && timerState.mode === 'countdown' && timerState.elapsedSec >= timerState.countdownTargetSec) {
+            timerState.elapsedSec = timerState.countdownTargetSec;
+            commitCurrentSegment(false, false);
+            showToast('Geri sayım tamamlandı ve kaydedildi!');
+            return;
+          }
+
+          clearInterval(timerState.intervalId);
+          timerState.intervalId = setInterval(tickTimer, 500);
+          saveActiveTimerState();
+        } else {
+          timerState.elapsedSec = restoredSec;
+          timerState.running = false;
+          timerState.lastTickMs = null;
+        }
+      } catch (e) {}
+    }
+
     function updateNotifPermissionBadge() {
       const btn = document.getElementById('btnNotifPerm');
+      const toggle = document.getElementById('lockscreenToggle');
+      if (toggle) {
+        toggle.checked = state.settings.lockscreenNotif !== false;
+      }
       if (!btn) return;
       if (!('Notification' in window)) {
         btn.style.display = 'none';
         return;
       }
       if (Notification.permission === 'granted') {
-        btn.textContent = 'Kilit Ekranı & AOD: Hazır';
+        btn.textContent = 'Bildirim: Aktif';
         btn.style.borderColor = 'var(--emerald)';
         btn.style.color = '#6ee7b7';
       } else if (Notification.permission === 'denied') {
@@ -1660,56 +1768,108 @@
       }
     }
 
-    async function syncLockScreenNotification(force = false) {
+    async function closeTimerNotifications() {
+      try {
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg && reg.getNotifications) {
+            const existing = await reg.getNotifications({ tag: 'tus-lockscreen-timer' });
+            existing.forEach(n => n.close());
+          }
+        }
+      } catch (e) {}
+      lastNotifPhase = '';
+    }
+
+    async function syncLockScreenNotification(force = false, alertTitle = null, alertBody = null) {
       const toggle = document.getElementById('lockscreenToggle');
-      if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
-      if (Notification.permission !== 'granted') return;
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+      const enabled = toggle ? toggle.checked : (state.settings.lockscreenNotif !== false);
+      const icon192 = new URL('./icon-192.png', window.location.href).href;
+
+      // Eğer geri sayım bitişi gibi özel bir uyarı bildirimi varsa gönder
+      if (alertTitle) {
+        try {
+          if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.ready;
+            if (reg && reg.showNotification) {
+              await reg.showNotification(alertTitle, {
+                body: alertBody || '',
+                icon: icon192,
+                badge: icon192,
+                tag: 'tus-countdown-done',
+                renotify: true,
+                silent: false,
+                vibrate: [250, 100, 250]
+              });
+              return;
+            }
+          }
+          new Notification(alertTitle, { body: alertBody || '', icon: icon192 });
+        } catch (e) {}
+        return;
+      }
+
+      if (!enabled || !timerState.running) {
+        await closeTimerNotifications();
+        return;
+      }
+
+      const now = Date.now();
+      const curSec = getDisplaySeconds();
+      const curMin = Math.floor(curSec / 60);
+      const stateSig = `${timerState.phase}_${timerState.selectedSubject}_${curMin}`;
+      if (!force && stateSig === lastNotifPhase && now - lastNotifSyncTime < 45000) return;
+      lastNotifPhase = stateSig;
+      lastNotifSyncTime = now;
+
+      const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
+      const todayStats = getDayTotals(todayISO());
+
+      const title = timerState.phase === 'break'
+        ? `☕ MOLADA • ${formatDuration(curSec)}`
+        : `▶ ${subj} • ${formatDuration(curSec)}`;
+
+      const body = `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`;
+      const actions = timerState.phase === 'break'
+        ? [
+            { action: 'start', title: '▶ Derse Dön' },
+            { action: 'save', title: '✅ Kaydet & Bitir' }
+          ]
+        : [
+            { action: 'break', title: '☕ Mola Ver' },
+            { action: 'save', title: '✅ Kaydet & Bitir' }
+          ];
 
       try {
-        const reg = await navigator.serviceWorker.ready;
-        if (!reg || !reg.showNotification) return;
-
-        // MediaSession destekleniyorsa küçük/daraltılmış standart bildirimi kapat:
-        // Böylece kilit ekranında genişletme gerektirmeyen ve kilit açmadan çalışan büyük Medya Kartı + AOD görünür.
-        if ('mediaSession' in navigator) {
-          const existing = await reg.getNotifications({ tag: 'tus-lockscreen-timer' });
-          existing.forEach(n => n.close());
-          lastNotifPhase = '';
-          return;
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          if (reg && reg.showNotification) {
+            await reg.showNotification(title, {
+              body,
+              icon: icon192,
+              badge: icon192,
+              tag: 'tus-lockscreen-timer',
+              renotify: false,
+              silent: true,
+              requireInteraction: true,
+              actions
+            });
+            return;
+          }
         }
-
-        if (!toggle || !toggle.checked || !timerState.running) {
-          const existing = await reg.getNotifications({ tag: 'tus-lockscreen-timer' });
-          existing.forEach(n => n.close());
-          lastNotifPhase = '';
-          return;
-        }
-
-        const now = Date.now();
-        const stateSig = `${timerState.phase}_${timerState.selectedSubject}_${timerState.running}`;
-        if (!force && stateSig === lastNotifPhase && now - lastNotifSyncTime < 60000) return;
-        lastNotifPhase = stateSig;
-        lastNotifSyncTime = now;
-
-        const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
-        const curSec = getDisplaySeconds();
-        const todayStats = getDayTotals(todayISO());
-        const icon192 = new URL('./icon-192.png', window.location.href).href;
-
-        const title = timerState.phase === 'break'
-          ? `☕ MOLADA • ${formatDuration(curSec)}`
-          : `▶ ${subj} • ${formatDuration(curSec)}`;
-
-        await reg.showNotification(title, {
-          body: `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`,
+        new Notification(title, {
+          body,
           icon: icon192,
-          badge: icon192,
           tag: 'tus-lockscreen-timer',
-          renotify: false,
-          silent: true,
-          requireInteraction: true
+          silent: true
         });
-      } catch (e) {}
+      } catch (e) {
+        try {
+          new Notification(title, { body, icon: icon192, tag: 'tus-lockscreen-timer', silent: true });
+        } catch (err) {}
+      }
     }
 
     function ensureLockScreenSession() {
@@ -1748,14 +1908,6 @@
             } else {
               startStudyMode();
             }
-            setTimeout(() => {
-              if (silentAudioEl && timerState.running) {
-                silentAudioEl.muted = false;
-                silentAudioEl.volume = 0.01;
-                silentAudioEl.play().catch(() => {});
-                try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
-              }
-            }, 120);
           });
           navigator.mediaSession.setActionHandler('previoustrack', () => {
             startStudyMode();
@@ -1785,7 +1937,6 @@
       const todayBreakMin = Math.floor(todayStats.breakSec / 60);
       const phaseMode = timerState.running ? timerState.phase : 'idle';
 
-      // Pil tasarrufu (özellikle AOD üzerinde): Saniyede bir değil, dakika değiştikçe veya durum değişince güncelle
       const mediaKey = `${phaseMode}_${timerState.selectedSubject}_${curMin}_${todayStudyMin}_${todayBreakMin}`;
       if (!force && mediaKey === lastMediaKey) return;
       lastMediaKey = mediaKey;
@@ -1802,13 +1953,13 @@
 
       if (timerState.running && timerState.phase === 'break') {
         stateTitle = `☕ MOLADA • ${formatDuration(curSec)}`;
-        artistLine = `⏮ Derse Dön • ⏸ Derse Dön • ⏭ Kaydet`;
+        artistLine = `▶ Derse Dön • ⏭ Kaydet`;
       } else if (timerState.running && timerState.phase === 'study') {
         stateTitle = `▶ ${subj} • ${formatDuration(curSec)}`;
-        artistLine = `⏮ Devam • ⏸ Mola Ver • ⏭ Kaydet`;
+        artistLine = `⏸ Mola Ver • ⏭ Kaydet`;
       } else if (keepPausedMediaOnLockscreen) {
         stateTitle = `✅ Kaydedildi • Yeni Oturum: ${subj}`;
-        artistLine = `▶ veya ⏮ ile Kilidi Açmadan Başlat`;
+        artistLine = `▶ ile Yeni Oturumu Başlat`;
       }
 
       const icon192 = new URL('./icon-192.png', window.location.href).href;
@@ -1839,10 +1990,25 @@
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && timerState.running) {
-        tickTimer();
-        updateTimerUI(true);
+      if (document.hidden) {
+        if (timerState.running) tickTimer();
+        saveActiveTimerState();
+        if (timerState.running) syncLockScreenNotification(true);
+      } else {
+        if (timerState.running) {
+          tickTimer();
+          saveActiveTimerState();
+          updateTimerUI(true);
+        }
       }
+    });
+    window.addEventListener('pagehide', () => {
+      if (timerState.running) tickTimer();
+      saveActiveTimerState();
+    });
+    window.addEventListener('beforeunload', () => {
+      if (timerState.running) tickTimer();
+      saveActiveTimerState();
     });
 
     function getDisplaySeconds() {
@@ -1899,11 +2065,15 @@
         btn.className = 'subj-pill' + (timerState.selectedSubject === sub.id ? ' active' : '');
         btn.innerHTML = `<span class="dot" style="background:${sub.color};"></span><span>${sub.name}</span>`;
         btn.onclick = () => {
-          if (timerState.elapsedSec >= 5 && timerState.phase === 'study') {
-            commitCurrentSegment(timerState.running, true);
+          if (sub.id !== timerState.selectedSubject) {
+            if (timerState.elapsedSec >= 5 && timerState.phase === 'study') {
+              commitCurrentSegment(timerState.running, true);
+            }
+            timerState.activeSessionId = null;
           }
           timerState.selectedSubject = sub.id;
           mSel.value = sub.id;
+          saveActiveTimerState();
           renderSubjectPills();
           updateTimerUI(true);
         };
@@ -2033,10 +2203,16 @@
         timerState.elapsedSec += diff;
         timerState.lastTickMs += diff * 1000;
         if (timerState.phase === 'study' && timerState.mode === 'countdown' && timerState.elapsedSec >= timerState.countdownTargetSec) {
+          const subjName = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
+          const minsDone = Math.round(timerState.countdownTargetSec / 60);
           timerState.elapsedSec = timerState.countdownTargetSec;
           commitCurrentSegment(false);
+          syncLockScreenNotification(true, `⏰ Süre Doldu! (${subjName})`, `${minsDone} dakikalık geri sayım tamamlandı ve kaydedildi.`);
           showToast('Geri sayım tamamlandı ve kaydedildi!');
           return;
+        }
+        if (timerState.elapsedSec % 15 === 0) {
+          saveActiveTimerState();
         }
         updateTimerUI(false);
       }
@@ -2106,6 +2282,7 @@
       timerState.lastTickMs = Date.now();
       clearInterval(timerState.intervalId);
       timerState.intervalId = setInterval(tickTimer, 500);
+      saveActiveTimerState();
       ensureLockScreenSession();
       updateTimerUI(true);
     }
@@ -2126,6 +2303,7 @@
       timerState.lastTickMs = Date.now();
       clearInterval(timerState.intervalId);
       timerState.intervalId = setInterval(tickTimer, 500);
+      saveActiveTimerState();
       ensureLockScreenSession();
       updateTimerUI(true);
     }
@@ -2198,12 +2376,14 @@
         timerState.phase = 'study';
         timerState.activeSessionId = null;
         clearInterval(timerState.intervalId);
+        clearActiveTimerState();
         ensureLockScreenSession();
         syncLockScreenNotification(true);
       } else {
         if (sec >= 1) saveState();
         timerState.elapsedSec = 0;
         timerState.lastTickMs = Date.now();
+        saveActiveTimerState();
       }
       renderAll();
     }
@@ -3182,7 +3362,9 @@
       document.getElementById('modeStopwatch').classList.add('active');
       document.getElementById('modeCountdown').classList.remove('active');
       document.getElementById('countdownPresets').classList.remove('show');
+      saveActiveTimerState();
       updateTimerUI(true);
+      requestAnimationFrame(syncTabsViewportHeight);
     };
 
     document.getElementById('modeCountdown').onclick = () => {
@@ -3192,7 +3374,9 @@
       document.getElementById('countdownPresets').classList.add('show');
       const mins = parseInt(document.getElementById('customCountdownMin').value, 10) || 50;
       timerState.countdownTargetSec = mins * 60;
+      saveActiveTimerState();
       updateTimerUI(true);
+      requestAnimationFrame(syncTabsViewportHeight);
     };
 
     document.querySelectorAll('.preset-chip').forEach(chip => {
@@ -3226,17 +3410,22 @@
     };
 
     document.getElementById('lockscreenToggle').onchange = (e) => {
+      state.settings.lockscreenNotif = Boolean(e.target.checked);
+      saveState();
       if (e.target.checked) {
         requestLockScreenNotificationPermission(false).then(() => {
           ensureLockScreenSession();
           updateLockScreenMetadata(true);
-          showToast('Kilit ekranı bildirimi etkinleştirildi');
+          showToast('Bildirimler etkinleştirildi');
         });
       } else {
         if (silentAudioEl) silentAudioEl.pause();
         syncLockScreenNotification(true);
+        showToast('Bildirimler kapatıldı');
       }
     };
+    document.getElementById('timerTopicInput').addEventListener('input', saveActiveTimerState);
+    document.getElementById('topicFinishedCheck').addEventListener('change', saveActiveTimerState);
 
     document.getElementById('manualDateInput').value = todayISO();
     document.querySelectorAll('.quick-add-btn').forEach(btn => {
@@ -3421,6 +3610,26 @@
       updateTimerUI(false);
     };
 
+    if ('ResizeObserver' in window) {
+      const ro = new ResizeObserver(() => {
+        requestAnimationFrame(syncTabsViewportHeight);
+      });
+      document.querySelectorAll('.tab-pane').forEach(p => ro.observe(p));
+    }
+
+    restoreActiveTimerState();
+    (function handleInitialNotifAction() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const act = params.get('notif_action');
+        if (act) {
+          if (act === 'start') startStudyMode();
+          else if (act === 'break') startBreakMode();
+          else if (act === 'save') commitCurrentSegment(false);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } catch (e) {}
+    })();
     renderAll();
   </script>
 </body>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tus-asistani-v19';
+const CACHE_NAME = 'tus-asistani-v20';
 const ASSETS = [
   './',
   './index.html',
@@ -34,18 +34,23 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   const action = event.action || 'focus';
+  event.notification.close();
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        client.postMessage({ type: 'TUS_NOTIFICATION_ACTION', action });
-      }
-      if (action === 'focus') {
-        if (clientList.length > 0 && 'focus' in clientList[0]) {
+      if (clientList.length > 0) {
+        for (const client of clientList) {
+          client.postMessage({ type: 'TUS_NOTIFICATION_ACTION', action });
+        }
+        if (action === 'focus' && 'focus' in clientList[0]) {
           return clientList[0].focus();
         }
-        if (self.clients.openWindow) {
-          return self.clients.openWindow('./index.html');
-        }
+        return;
+      }
+      if (self.clients.openWindow) {
+        const targetUrl = action && action !== 'focus'
+          ? `./index.html?notif_action=${encodeURIComponent(action)}`
+          : './index.html';
+        return self.clients.openWindow(targetUrl);
       }
     })
   );
@@ -53,10 +58,12 @@ self.addEventListener('notificationclick', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const reqUrl = new URL(event.request.url);
+  const isNav = event.request.mode === 'navigate' || reqUrl.pathname.endsWith('.html') || reqUrl.pathname.endsWith('/');
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, isNav ? { cache: 'no-cache' } : undefined)
       .then((response) => {
-        if (response && response.ok && event.request.url.startsWith(self.location.origin)) {
+        if (response && response.ok && reqUrl.origin === self.location.origin) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
