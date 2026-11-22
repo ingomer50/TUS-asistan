@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tus-asistani-v18';
+const CACHE_NAME = 'tus-asistani-v19';
 const ASSETS = [
   './',
   './index.html',

@@ -1416,16 +1416,20 @@
   <!-- GALAXY S23 ULTRA OLED AOD OVERLAY -->
   <div class="aod-overlay" id="aodOverlay">
     <div class="aod-shift-box" id="aodShiftBox">
-      <div style="font-size:13px;color:#64748b;letter-spacing:1px;margin-bottom:4px;">GALAXY S23 ULTRA • OLED AOD</div>
+      <div style="font-size:12px;color:#64748b;letter-spacing:1px;margin-bottom:4px;">GALAXY S23 ULTRA • OLED AOD (PİL KORUMA)</div>
       <div id="aodClock" style="font-size:54px;font-weight:200;letter-spacing:2px;color:#f8fafc;">00:00</div>
       <div id="aodSubject" style="font-size:16px;font-weight:700;color:#38bdf8;margin-top:8px;">Genel Cerrahi</div>
-      <div id="aodTimer" style="font-size:44px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0;">00:00:00</div>
-      <div id="aodDailyStats" style="font-size:13px;color:#94a3b8;margin-bottom:20px;">Bugün: 0 sa 00 dk • Genel Toplam: 0 sa 00 dk</div>
-      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:20px;">
+      <div id="aodTimer" style="font-size:42px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0;">0 dk</div>
+      <div id="aodDailyStats" style="font-size:13px;color:#94a3b8;margin-bottom:18px;">Bugün Ders: 0 dk • Mola: 0 dk</div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">
         <button type="button" class="btn btn-primary" id="aodBtnStart">Başlat</button>
         <button type="button" class="btn btn-amber" id="aodBtnBreak" disabled>Mola Ver</button>
+        <button type="button" class="btn btn-emerald" id="aodBtnSave" disabled>Kaydet & Bitir</button>
       </div>
-      <button type="button" class="btn" id="btnCloseAod" style="border-color:#334155;color:#cbd5e1;">AOD Kapat</button>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm" id="btnToggleAodSec" style="border-color:#1e293b;color:#64748b;">Saniyeyi Göster</button>
+        <button type="button" class="btn btn-sm" id="btnCloseAod" style="border-color:#334155;color:#cbd5e1;">AOD Kapat</button>
+      </div>
     </div>
   </div>
 
@@ -1455,7 +1459,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v18') caches.delete(k);
+              if (k !== 'tus-asistani-v19') caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1576,13 +1580,14 @@
     let quickNobetMode = false;
 
     let silentAudioEl = null;
-    let lastMediaSec = -1;
+    let lastMediaKey = '';
     let lastNotifSyncTime = 0;
     let lastNotifPhase = '';
+    let keepPausedMediaOnLockscreen = false;
 
     function createAudibleThresholdWavUrl() {
       const sampleRate = 8000;
-      const numSamples = sampleRate;
+      const numSamples = sampleRate * 2;
       const buffer = new ArrayBuffer(44 + numSamples * 2);
       const view = new DataView(buffer);
       function writeStr(off, s) {
@@ -1602,9 +1607,9 @@
       writeStr(36, 'data');
       view.setUint32(40, numSamples * 2, true);
 
-      // Tamamen sessiz (0 genlikli dijital sessizlik)
+      // Duyulma eşiğinin çok altında (-90 dB, 1/32767 genlik): Kulakla duyulmaz ama Android AudioFocus & AOD MediaSession'ı aktif tutar
       for (let i = 0; i < numSamples; i++) {
-        view.setInt16(44 + i * 2, 0, true);
+        view.setInt16(44 + i * 2, (i % 2 === 0) ? 1 : -1, true);
       }
 
       const bytes = new Uint8Array(buffer);
@@ -1621,7 +1626,7 @@
         return;
       }
       if (Notification.permission === 'granted') {
-        btn.textContent = 'Bildirim İzni: Açık';
+        btn.textContent = 'Kilit Ekranı & AOD: Hazır';
         btn.style.borderColor = 'var(--emerald)';
         btn.style.color = '#6ee7b7';
       } else if (Notification.permission === 'denied') {
@@ -1664,6 +1669,15 @@
         const reg = await navigator.serviceWorker.ready;
         if (!reg || !reg.showNotification) return;
 
+        // MediaSession destekleniyorsa küçük/daraltılmış standart bildirimi kapat:
+        // Böylece kilit ekranında genişletme gerektirmeyen ve kilit açmadan çalışan büyük Medya Kartı + AOD görünür.
+        if ('mediaSession' in navigator) {
+          const existing = await reg.getNotifications({ tag: 'tus-lockscreen-timer' });
+          existing.forEach(n => n.close());
+          lastNotifPhase = '';
+          return;
+        }
+
         if (!toggle || !toggle.checked || !timerState.running) {
           const existing = await reg.getNotifications({ tag: 'tus-lockscreen-timer' });
           existing.forEach(n => n.close());
@@ -1673,58 +1687,48 @@
 
         const now = Date.now();
         const stateSig = `${timerState.phase}_${timerState.selectedSubject}_${timerState.running}`;
-        if (!force && stateSig === lastNotifPhase && now - lastNotifSyncTime < 10000) return;
+        if (!force && stateSig === lastNotifPhase && now - lastNotifSyncTime < 60000) return;
         lastNotifPhase = stateSig;
         lastNotifSyncTime = now;
 
         const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
         const curSec = getDisplaySeconds();
         const todayStats = getDayTotals(todayISO());
-        const allTimeSec = getAllTimeStudySec();
         const icon192 = new URL('./icon-192.png', window.location.href).href;
 
         const title = timerState.phase === 'break'
-          ? `☕ MOLADA • Oturum: ${formatHMS(curSec)}`
-          : `▶ ${subj} • Oturum: ${formatHMS(curSec)}`;
-
-        const body = `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}
-Genel Toplam: ${formatDuration(allTimeSec)}`;
-
-        const actions = timerState.phase === 'break'
-          ? [
-              { action: 'start', title: '▶ Başlat' },
-              { action: 'save', title: '✅ Kaydet & Bitir' }
-            ]
-          : [
-              { action: 'break', title: '☕ Mola Ver' },
-              { action: 'save', title: '✅ Kaydet & Bitir' }
-            ];
+          ? `☕ MOLADA • ${formatDuration(curSec)}`
+          : `▶ ${subj} • ${formatDuration(curSec)}`;
 
         await reg.showNotification(title, {
-          body,
+          body: `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`,
           icon: icon192,
           badge: icon192,
           tag: 'tus-lockscreen-timer',
           renotify: false,
           silent: true,
-          requireInteraction: true,
-          actions
+          requireInteraction: true
         });
       } catch (e) {}
     }
 
     function ensureLockScreenSession() {
       const toggle = document.getElementById('lockscreenToggle');
-      if (!toggle || !toggle.checked) return;
+      if (!toggle || !toggle.checked) {
+        if (silentAudioEl) silentAudioEl.pause();
+        return;
+      }
       try {
         if (!silentAudioEl) {
           silentAudioEl = document.getElementById('bgKeepAliveAudio') || new Audio();
           silentAudioEl.src = createAudibleThresholdWavUrl();
           silentAudioEl.loop = true;
-          silentAudioEl.volume = 0;
-          silentAudioEl.muted = true;
         }
+        silentAudioEl.muted = false;
+        silentAudioEl.volume = 0.01;
+
         if (timerState.running) {
+          keepPausedMediaOnLockscreen = true;
           const playPromise = silentAudioEl.play();
           if (playPromise && typeof playPromise.then === 'function') {
             playPromise.then(() => updateLockScreenMetadata(true)).catch(() => {});
@@ -1741,22 +1745,30 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
               startStudyMode();
             } else if (timerState.phase === 'study' && timerState.running) {
               startBreakMode();
+            } else {
+              startStudyMode();
             }
             setTimeout(() => {
               if (silentAudioEl && timerState.running) {
+                silentAudioEl.muted = false;
+                silentAudioEl.volume = 0.01;
                 silentAudioEl.play().catch(() => {});
                 try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
               }
-            }, 150);
-          });
-          navigator.mediaSession.setActionHandler('nexttrack', () => {
-            if (timerState.running && timerState.phase === 'study') startBreakMode();
+            }, 120);
           });
           navigator.mediaSession.setActionHandler('previoustrack', () => {
             startStudyMode();
           });
+          navigator.mediaSession.setActionHandler('nexttrack', () => {
+            if (timerState.running || timerState.elapsedSec > 0) {
+              commitCurrentSegment(false);
+            }
+          });
           navigator.mediaSession.setActionHandler('stop', () => {
-            if (timerState.running || timerState.elapsedSec > 0) commitCurrentSegment(false);
+            if (timerState.running || timerState.elapsedSec > 0) {
+              commitCurrentSegment(false);
+            }
           });
         }
       } catch (e) {}
@@ -1767,19 +1779,37 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       if (!toggle || !toggle.checked) return;
 
       const curSec = getDisplaySeconds();
-      if (!force && curSec === lastMediaSec) return;
-      lastMediaSec = curSec;
+      const curMin = Math.floor(curSec / 60);
+      const todayStats = getDayTotals(todayISO());
+      const todayStudyMin = Math.floor(todayStats.studySec / 60);
+      const todayBreakMin = Math.floor(todayStats.breakSec / 60);
+      const phaseMode = timerState.running ? timerState.phase : 'idle';
+
+      // Pil tasarrufu (özellikle AOD üzerinde): Saniyede bir değil, dakika değiştikçe veya durum değişince güncelle
+      const mediaKey = `${phaseMode}_${timerState.selectedSubject}_${curMin}_${todayStudyMin}_${todayBreakMin}`;
+      if (!force && mediaKey === lastMediaKey) return;
+      lastMediaKey = mediaKey;
 
       syncLockScreenNotification(force);
 
       if (!('mediaSession' in navigator)) return;
 
       const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
-      const todayStats = getDayTotals(todayISO());
       const allTimeSec = getAllTimeStudySec();
-      const stateTitle = timerState.phase === 'break'
-        ? `MOLA • Oturum: ${formatHMS(curSec)}`
-        : `${subj} • Oturum: ${formatHMS(curSec)}`;
+
+      let stateTitle = `⏸ HAZIR • ${subj}`;
+      let artistLine = `▶ Başlat • Bugün: ${formatDuration(todayStats.studySec)}`;
+
+      if (timerState.running && timerState.phase === 'break') {
+        stateTitle = `☕ MOLADA • ${formatDuration(curSec)}`;
+        artistLine = `⏮ Derse Dön • ⏸ Derse Dön • ⏭ Kaydet`;
+      } else if (timerState.running && timerState.phase === 'study') {
+        stateTitle = `▶ ${subj} • ${formatDuration(curSec)}`;
+        artistLine = `⏮ Devam • ⏸ Mola Ver • ⏭ Kaydet`;
+      } else if (keepPausedMediaOnLockscreen) {
+        stateTitle = `✅ Kaydedildi • Yeni Oturum: ${subj}`;
+        artistLine = `▶ veya ⏮ ile Kilidi Açmadan Başlat`;
+      }
 
       const icon192 = new URL('./icon-192.png', window.location.href).href;
       const icon512 = new URL('./icon-512.png', window.location.href).href;
@@ -1787,8 +1817,8 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       try {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: stateTitle,
-          artist: `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)}`,
-          album: `Genel Toplam: ${formatDuration(allTimeSec)}`,
+          artist: artistLine,
+          album: `Bugün Ders: ${formatDuration(todayStats.studySec)} | Mola: ${formatDuration(todayStats.breakSec)} • Toplam: ${formatDuration(allTimeSec)}`,
           artwork: [
             { src: icon192, sizes: '192x192', type: 'image/png' },
             { src: icon512, sizes: '512x512', type: 'image/png' }
@@ -1909,6 +1939,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
       const saveBtn = document.getElementById('btnSaveSession');
       const aodStart = document.getElementById('aodBtnStart');
       const aodBreak = document.getElementById('aodBtnBreak');
+      const aodSave = document.getElementById('aodBtnSave');
 
       const sec = getDisplaySeconds();
       disp.textContent = formatHMS(sec);
@@ -1946,6 +1977,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
         saveBtn.disabled = false;
         if (aodStart) { aodStart.disabled = false; aodStart.textContent = 'Derse Dön'; }
         if (aodBreak) { aodBreak.disabled = true; aodBreak.textContent = 'Moladasınız...'; }
+        if (aodSave) { aodSave.disabled = false; }
       } else if (timerState.phase === 'study' && timerState.running) {
         timerBox.classList.add('state-study');
         banner.innerHTML = `<span class="pulse-dot"></span><span>ÇALIŞILIYOR • ${subj ? subj.name : ''}</span>`;
@@ -1959,6 +1991,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
         saveBtn.disabled = false;
         if (aodStart) { aodStart.disabled = true; aodStart.textContent = 'Çalışılıyor...'; }
         if (aodBreak) { aodBreak.disabled = false; aodBreak.textContent = 'Mola Ver'; }
+        if (aodSave) { aodSave.disabled = false; }
       } else {
         banner.innerHTML = `<span>HAZIR • ${subj ? subj.name : ''}</span>`;
         subCap.textContent = `Oturum Başlatılmadı • Bugün Toplam Ders: ${formatDuration(totals.studySec)}`;
@@ -1971,6 +2004,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
         saveBtn.disabled = !isSessionActive;
         if (aodStart) { aodStart.disabled = false; aodStart.textContent = 'Başlat'; }
         if (aodBreak) { aodBreak.disabled = true; aodBreak.textContent = 'Mola Ver'; }
+        if (aodSave) { aodSave.disabled = !isSessionActive; }
       }
 
       const goalHrs = state.settings.dailyGoalHours || 8;
@@ -1981,7 +2015,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
 
       document.getElementById('aodSubject').textContent = (timerState.phase === 'break' && timerState.running) ? 'ŞU AN MOLADASINIZ' : (subj ? subj.name : '');
       document.getElementById('aodSubject').style.color = (timerState.phase === 'break' && timerState.running) ? '#fbbf24' : '#38bdf8';
-      document.getElementById('aodTimer').textContent = formatHMS(sec);
+      document.getElementById('aodTimer').textContent = aodShowSeconds ? formatHMS(sec) : formatDuration(sec);
       document.getElementById('aodDailyStats').textContent = `Bugün Ders: ${formatDuration(totals.studySec)} • Mola: ${formatDuration(totals.breakSec)}`;
 
       document.title = timerState.running
@@ -3352,6 +3386,7 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
 
     let wakeLockObj = null;
     let aodShiftInterval = null;
+    let aodShowSeconds = false;
     async function openAod() {
       document.getElementById('aodOverlay').classList.add('open');
       updateAodClock();
@@ -3379,6 +3414,12 @@ Genel Toplam: ${formatDuration(allTimeSec)}`;
     document.getElementById('btnCloseAod').onclick = closeAod;
     document.getElementById('aodBtnStart').onclick = () => startStudyMode();
     document.getElementById('aodBtnBreak').onclick = () => startBreakMode();
+    document.getElementById('aodBtnSave').onclick = () => commitCurrentSegment(false);
+    document.getElementById('btnToggleAodSec').onclick = () => {
+      aodShowSeconds = !aodShowSeconds;
+      document.getElementById('btnToggleAodSec').textContent = aodShowSeconds ? 'Saniyeyi Gizle (Pil Tasarrufu)' : 'Saniyeyi Göster';
+      updateTimerUI(false);
+    };
 
     renderAll();
   </script>
