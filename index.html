@@ -340,6 +340,17 @@
       color: var(--text);
       box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.3);
     }
+    .subj-pill:disabled,
+    .subj-pill.locked {
+      opacity: 0.42;
+      cursor: not-allowed;
+      filter: grayscale(0.4);
+    }
+    .subj-pill.active:disabled,
+    .subj-pill.active.locked {
+      opacity: 1;
+      filter: none;
+    }
     .timer-box {
       background: var(--surface-3);
       border: 2px solid var(--border);
@@ -985,7 +996,7 @@
     <header class="topbar">
       <div class="brand-group">
         <span class="brand-title">TUS Asistanı</span>
-        <span class="version-pill" id="appVersionBadge">v21</span>
+        <span class="version-pill" id="appVersionBadge">v22</span>
         <span class="countdown-pill" id="tusCountdownText">TUS'a -- Gün</span>
       </div>
       <div class="top-actions">
@@ -1446,7 +1457,7 @@
   <div class="overlay" id="settingsModal">
     <div class="modal-box">
       <div class="card-header">
-        <div class="card-title">Hedefler & Sınav Tarihi <span class="version-pill">v21</span></div>
+        <div class="card-title">Hedefler & Sınav Tarihi <span class="version-pill">v22</span></div>
         <button type="button" class="btn btn-sm" id="btnCloseSettings">Kapat</button>
       </div>
       <div class="form-grid">
@@ -1504,7 +1515,7 @@
       { id: 'anatomi', name: 'Anatomi', group: 'Temel', color: '#c084fc' }
     ];
 
-    const APP_VERSION = 'v21';
+    const APP_VERSION = 'v22';
     const STORAGE_KEY = 'tus_asistani_data_v5';
     const ACTIVE_TIMER_KEY = 'tus_asistani_active_timer_v1';
 
@@ -1514,7 +1525,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v21') caches.delete(k);
+              if (k !== 'tus-asistani-v22') caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1524,9 +1535,14 @@
       });
     }
 
+    function studyDayISO(dateObj = new Date()) {
+      // Gece 03:00'e kadar olan süreler bir önceki çalışma gününe yazılır
+      const shifted = new Date(dateObj.getTime() - 3 * 60 * 60 * 1000);
+      return shifted.getFullYear() + '-' + String(shifted.getMonth() + 1).padStart(2, '0') + '-' + String(shifted.getDate()).padStart(2, '0');
+    }
+
     function todayISO() {
-      const d = new Date();
-      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      return studyDayISO(new Date());
     }
 
     function addDaysISO(iso, days) {
@@ -1733,7 +1749,14 @@
           timerState.phase = saved.phase;
         }
         timerState.activeSessionId = saved.activeSessionId || null;
-        timerState.sessionDate = saved.sessionDate || null;
+        if (saved.sessionDate) {
+          timerState.sessionDate = saved.sessionDate;
+        } else if (typeof saved.anchorMs === 'number' && saved.anchorMs > 0) {
+          const startedAtMs = saved.anchorMs - (Math.max(0, Number(saved.baseElapsedSec) || 0) * 1000);
+          timerState.sessionDate = studyDayISO(new Date(startedAtMs));
+        } else {
+          timerState.sessionDate = null;
+        }
 
         const topicEl = document.getElementById('timerTopicInput');
         const finishEl = document.getElementById('topicFinishedCheck');
@@ -2105,6 +2128,11 @@
       return total;
     }
 
+    function isSessionInProgress() {
+      const hasSessionSegments = Boolean(timerState.activeSessionId && state.sessions.some(s => s.sessionId === timerState.activeSessionId));
+      return Boolean(timerState.running || timerState.elapsedSec > 0 || hasSessionSegments);
+    }
+
     function renderSubjectPills() {
       const kWrap = document.getElementById('klinikPills');
       const tWrap = document.getElementById('temelPills');
@@ -2122,28 +2150,23 @@
         `;
       }
 
+      const sessionLocked = isSessionInProgress();
+
       SUBJECTS.forEach(sub => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'subj-pill' + (timerState.selectedSubject === sub.id ? ' active' : '');
+        const isCurrent = timerState.selectedSubject === sub.id;
+        btn.className = 'subj-pill' + (isCurrent ? ' active' : '') + (sessionLocked && !isCurrent ? ' locked' : '');
+        btn.dataset.subjectId = sub.id;
+        if (sessionLocked && !isCurrent) {
+          btn.disabled = true;
+          btn.title = 'Başka derse geçmek için önce Kaydet & Bitir yapmalısınız';
+        }
         btn.innerHTML = `<span class="dot" style="background:${sub.color};"></span><span>${sub.name}</span>`;
         btn.onclick = () => {
-          if (sub.id !== timerState.selectedSubject) {
-            if (timerState.running) tickTimer();
-            const wasRunning = timerState.running;
-            if (timerState.elapsedSec >= 1) {
-              commitCurrentSegment(wasRunning, true);
-            }
-            timerState.elapsedSec = 0;
-            timerState.activeSessionId = null;
-            timerState.sessionDate = null;
-            if (timerState.phase === 'break') {
-              timerState.phase = 'study';
-            }
-            if (wasRunning) {
-              ensureActiveSessionId();
-              timerState.lastTickMs = Date.now();
-            }
+          if (isSessionInProgress() && sub.id !== timerState.selectedSubject) {
+            showToast('Başka derse geçmek için önce "Kaydet & Bitir" butonuna basın');
+            return;
           }
           timerState.selectedSubject = sub.id;
           mSel.value = sub.id;
@@ -2206,8 +2229,14 @@
 
       timerBox.classList.remove('state-study', 'state-break');
 
-      const hasSessionSegments = Boolean(timerState.activeSessionId && state.sessions.some(s => s.sessionId === timerState.activeSessionId));
-      const isSessionActive = timerState.running || timerState.elapsedSec > 0 || hasSessionSegments;
+      const isSessionActive = isSessionInProgress();
+      document.querySelectorAll('.subj-pill').forEach(pill => {
+        const isCurrent = pill.dataset.subjectId === timerState.selectedSubject;
+        const shouldLock = isSessionActive && !isCurrent;
+        pill.disabled = shouldLock;
+        pill.classList.toggle('locked', shouldLock);
+        pill.title = shouldLock ? 'Başka derse geçmek için önce Kaydet & Bitir yapmalısınız' : '';
+      });
 
       if (timerState.phase === 'break' && timerState.running) {
         timerBox.classList.add('state-break');
@@ -2270,7 +2299,15 @@
       updateLockScreenMetadata(forceMedia);
     }
 
+    let lastKnownStudyDay = todayISO();
     function tickTimer() {
+      const curStudyDay = todayISO();
+      if (curStudyDay !== lastKnownStudyDay) {
+        lastKnownStudyDay = curStudyDay;
+        const mDate = document.getElementById('manualDateInput');
+        if (mDate) mDate.value = curStudyDay;
+        renderTodayLists();
+      }
       if (!timerState.running) return;
       const now = Date.now();
       const diff = Math.floor((now - timerState.lastTickMs) / 1000);
