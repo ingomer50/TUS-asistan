@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tus-asistani-v24-fix';
+const CACHE_NAME = 'tus-asistani-v24-fix'; // index.html içindeki CACHE_VERSION ile aynı olmalı
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   './icon-512.png',
   './apple-touch-icon.png'
 ];
+const NETWORK_TIMEOUT_MS = 4000;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -16,7 +17,7 @@ self.addEventListener('install', (event) => {
         Promise.allSettled(
           ASSETS.map((url) =>
             fetch(url, { cache: 'no-cache' }).then((res) => {
-              if (res && res.ok) return cache.put(url, res);
+              if (res && res.status === 200) return cache.put(url, res);
             })
           )
         )
@@ -43,13 +44,12 @@ self.addEventListener('notificationclick', (event) => {
       if (clientList.length > 0) {
         const targetClient = clientList.find((c) => c.focused) || clientList[0];
         targetClient.postMessage({ type: 'TUS_NOTIFICATION_ACTION', action });
-        if (action === 'focus' && 'focus' in targetClient) {
-          return targetClient.focus();
-        }
+        // Not: Android'de aksiyon butonuna basınca da uygulamayı öne getir
+        if ('focus' in targetClient) return targetClient.focus().catch(() => {});
         return;
       }
       if (self.clients.openWindow) {
-        const targetUrl = action && action !== 'focus'
+        const targetUrl = action !== 'focus'
           ? `./index.html?notif_action=${encodeURIComponent(action)}`
           : './index.html';
         return self.clients.openWindow(targetUrl);
@@ -58,21 +58,40 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+function fetchWithTimeout(request, options, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    fetch(request, options).then(
+      (res) => { clearTimeout(timer); resolve(res); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  const reqUrl = new URL(event.request.url);
-  const isNav = event.request.mode === 'navigate' || reqUrl.pathname.endsWith('.html') || reqUrl.pathname.endsWith('/');
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const reqUrl = new URL(req.url);
+
+  // Farklı origin ve Range (ses/video) isteklerine karışma
+  if (reqUrl.origin !== self.location.origin || req.headers.has('range')) return;
+
+  const isNav = req.mode === 'navigate' || reqUrl.pathname.endsWith('.html') || reqUrl.pathname.endsWith('/');
+
   event.respondWith(
-    fetch(event.request, isNav ? { cache: 'no-cache' } : undefined)
+    fetchWithTimeout(req, isNav ? { cache: 'no-cache' } : undefined, NETWORK_TIMEOUT_MS)
       .then((response) => {
-        if (response && response.ok && reqUrl.origin === self.location.origin) {
+        // Sadece tam (200) cevapları önbelleğe yaz; 206 cache.put'ta hata verir
+        if (response && response.status === 200 && response.type === 'basic') {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {})
+          );
         }
         return response;
       })
       .catch(() =>
-        caches.match(event.request).then((cached) => {
+        caches.match(req, { ignoreSearch: true }).then((cached) => {
           if (cached) return cached;
           if (isNav) return caches.match('./index.html');
           return Response.error();
