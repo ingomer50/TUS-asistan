@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tus-asistani-v24';
+const CACHE_NAME = 'tus-asistani-v24-fix';
 const ASSETS = [
   './',
   './index.html',
@@ -72,7 +72,11 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() =>
-        caches.match(event.request).then((cached) => cached || caches.match('./index.html'))
+        caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          if (isNav) return caches.match('./index.html');
+          return Response.error();
+        })
       )
   );
 });

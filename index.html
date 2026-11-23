@@ -1640,6 +1640,7 @@
     ];
 
     const APP_VERSION = 'v24';
+    const CACHE_VERSION = 'tus-asistani-v24-fix';
     const STORAGE_KEY = 'tus_asistani_data_v5';
     const ACTIVE_TIMER_KEY = 'tus_asistani_active_timer_v1';
 
@@ -1649,7 +1650,7 @@
         if ('caches' in window) {
           caches.keys().then(keys => {
             keys.forEach(k => {
-              if (k !== 'tus-asistani-v24') caches.delete(k);
+              if (k !== CACHE_VERSION) caches.delete(k);
             });
           }).catch(() => {});
         }
@@ -1820,6 +1821,7 @@
       running: false,
       elapsedSec: 0,
       lastTickMs: null,
+      lastPersistMs: 0,
       intervalId: null,
       activeSessionId: null,
       sessionDate: null,
@@ -1961,6 +1963,7 @@
 
     function saveActiveTimerState() {
       try {
+        timerState.lastPersistMs = Date.now();
         const topicEl = document.getElementById('timerTopicInput');
         const finishEl = document.getElementById('topicFinishedCheck');
         const payload = {
@@ -2645,7 +2648,7 @@
           saveActiveTimerState();
         }
 
-        if (timerState.elapsedSec % 15 === 0) {
+        if (now - timerState.lastPersistMs >= 15000) {
           saveActiveTimerState();
         }
         updateTimerUI(false);
@@ -2841,6 +2844,10 @@
                 ? `Oturum (${targetDate}) kaydedildi + 3-7-21 tekrarları eklendi`
                 : `Oturum (${targetDate}) kaydedildi (bu konunun tekrarları zaten mevcut)`);
             }
+          } else if (finishedTopic && uniqueTopics.length === 0) {
+            if (!silentToast) {
+              showToast(`Oturum (${targetDate}) kaydedildi (konu adı girilmediği için tekrar eklenmedi)`);
+            }
           } else if (!silentToast) {
             showToast(`Oturum (${targetDate}) kaydedildi ve tamamlandı`);
           }
@@ -2991,8 +2998,7 @@
       const noteBox = document.getElementById('selectedDaySavedNoteBox');
       if (selMeta.note && selMeta.note.trim()) {
         noteBox.style.display = 'block';
-        noteBox.innerHTML = `<strong>O Günün Notu:</strong>
-${escapeHtml(selMeta.note)}`;
+        noteBox.innerHTML = `<strong>O Günün Notu:</strong>\n${escapeHtml(selMeta.note)}`;
       } else {
         noteBox.style.display = 'none';
       }
@@ -3385,7 +3391,9 @@ ${escapeHtml(selMeta.note)}`;
       const w = Math.max(320, sorted.length * 75);
       const h = 165;
       const padL = 32, padR = 16, padT = 20, padB = 28;
-      const minP = 35, maxP = 85;
+      const allScores = sorted.flatMap(ex => [Number(ex.finalK) || 50, Number(ex.finalT) || 50]);
+      const minP = Math.min(35, Math.floor(Math.min(...allScores) - 3));
+      const maxP = Math.max(85, Math.ceil(Math.max(...allScores) + 3));
       const xStep = sorted.length > 1 ? (w - padL - padR) / (sorted.length - 1) : 0;
       const yPos = (val) => {
         const clamped = Math.max(minP, Math.min(maxP, val));
@@ -3536,7 +3544,7 @@ ${escapeHtml(selMeta.note)}`;
           </table>
         </body></html>
       `;
-      triggerUniversalDownload(`TUS_Calisma_Raporu_${todayISO()}.doc`, 'application/msword', '﻿' + docHtml);
+      triggerUniversalDownload(`TUS_Calisma_Raporu_${todayISO()}.doc`, 'application/msword', '\uFEFF' + docHtml);
       showToast('Word (.doc) raporu indirildi');
     }
 
@@ -3548,8 +3556,8 @@ ${escapeHtml(selMeta.note)}`;
         .replace(/ı/g, 'i').replace(/İ/g, 'I')
         .replace(/ö/g, 'o').replace(/Ö/g, 'O')
         .replace(/ç/g, 'c').replace(/Ç/g, 'C')
-        .replace(/[^ -~]/g, ' ')
-        .replace(/[()\]/g, ' ');
+        .replace(/[^\x20-\x7E]/g, ' ')
+        .replace(/[()\\]/g, ' ');
     }
 
     function wrapPdfLine(text, maxLen = 84) {
@@ -3609,64 +3617,38 @@ ${escapeHtml(selMeta.note)}`;
       const kidsRefs = [];
       const objs = [];
 
-      objs[1] = '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
-';
+      objs[1] = '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n';
 
       pages.forEach((pageLines, pIdx) => {
         const pageObjNum = 3 + pIdx * 2;
         const contentObjNum = pageObjNum + 1;
         kidsRefs.push(`${pageObjNum} 0 R`);
 
-        let contentStream = 'BT
-/F1 10.5 Tf
-42 795 Td
-15 TL
-';
+        let contentStream = 'BT\n/F1 10.5 Tf\n42 795 Td\n15 TL\n';
         pageLines.forEach((line, lIdx) => {
-          contentStream += lIdx === 0 ? `(${line}) Tj
-` : `T* (${line}) Tj
-`;
+          contentStream += lIdx === 0 ? `(${line}) Tj\n` : `T* (${line}) Tj\n`;
         });
-        contentStream += `ET
-BT
-/F1 9 Tf
-265 28 Td
-(Sayfa ${pIdx + 1} / ${pageCount}) Tj
-ET
-`;
+        contentStream += `ET\nBT\n/F1 9 Tf\n265 28 Td\n(Sayfa ${pIdx + 1} / ${pageCount}) Tj\nET\n`;
 
-        objs[pageObjNum] = `${pageObjNum} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${contentObjNum} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >> endobj
-`;
-        objs[contentObjNum] = `${contentObjNum} 0 obj << /Length ${contentStream.length} >> stream
-${contentStream}endstream endobj
-`;
+        objs[pageObjNum] = `${pageObjNum} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents ${contentObjNum} 0 R /Resources << /Font << /F1 ${fontObjNum} 0 R >> >> >> endobj\n`;
+        objs[contentObjNum] = `${contentObjNum} 0 obj << /Length ${contentStream.length} >> stream\n${contentStream}endstream endobj\n`;
       });
 
-      objs[2] = `2 0 obj << /Type /Pages /Kids [${kidsRefs.join(' ')}] /Count ${pageCount} >> endobj
-`;
-      objs[fontObjNum] = `${fontObjNum} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
-`;
+      objs[2] = `2 0 obj << /Type /Pages /Kids [${kidsRefs.join(' ')}] /Count ${pageCount} >> endobj\n`;
+      objs[fontObjNum] = `${fontObjNum} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n`;
 
-      let pdf = '%PDF-1.4
-';
+      let pdf = '%PDF-1.4\n';
       const offsets = [0];
       for (let i = 1; i <= fontObjNum; i++) {
         offsets[i] = pdf.length;
         pdf += objs[i];
       }
       const xrefStart = pdf.length;
-      pdf += `xref
-0 ${fontObjNum + 1}
-0000000000 65535 f 
-`;
+      pdf += `xref\n0 ${fontObjNum + 1}\n0000000000 65535 f \n`;
       for (let i = 1; i <= fontObjNum; i++) {
-        pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n 
-';
+        pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
       }
-      pdf += `trailer << /Size ${fontObjNum + 1} /Root 1 0 R >>
-startxref
-${xrefStart}
-%%EOF`;
+      pdf += `trailer << /Size ${fontObjNum + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
 
       triggerUniversalDownload(`TUS_Calisma_Raporu_${todayISO()}.pdf`, 'application/pdf', pdf);
       showToast(`PDF (.pdf) raporu indirildi (${pageCount} sayfa)`);
@@ -3761,7 +3743,7 @@ ${xrefStart}
 
     function xmlEsc(v) {
       return String(v)
-        .replace(/[ --]/g, '')
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -4179,6 +4161,9 @@ ${xrefStart}
       document.getElementById('reportModal').classList.add('open');
     };
     document.getElementById('btnCloseReport').onclick = () => document.getElementById('reportModal').classList.remove('open');
+    document.getElementById('reportModal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+    });
     document.getElementById('reportPeriodSelect').onchange = updateReportPreview;
     document.getElementById('btnExportDoc').onclick = exportWordDoc;
     document.getElementById('btnExportPdf').onclick = exportBinaryPdf;
@@ -4186,10 +4171,7 @@ ${xrefStart}
     document.getElementById('btnPrintReport').onclick = () => window.print();
     document.getElementById('btnCopyReportText').onclick = () => {
       const d = getFilteredReportData();
-      const txt = `TUS Çalışma Özeti (${d.title})
-Toplam Ders: ${formatDuration(d.studySec)}
-Toplam Mola: ${formatDuration(d.breakSec)}
-Dönem Denemesi: ${d.exams.length} adet`;
+      const txt = `TUS Çalışma Özeti (${d.title})\nToplam Ders: ${formatDuration(d.studySec)}\nToplam Mola: ${formatDuration(d.breakSec)}\nDönem Denemesi: ${d.exams.length} adet`;
       if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => showToast('Özet panoya kopyalandı'));
     };
     document.getElementById('btnExportJson').onclick = () => {
@@ -4227,6 +4209,9 @@ Dönem Denemesi: ${d.exams.length} adet`;
       document.getElementById('settingsModal').classList.add('open');
     };
     document.getElementById('btnCloseSettings').onclick = () => document.getElementById('settingsModal').classList.remove('open');
+    document.getElementById('settingsModal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+    });
     document.getElementById('btnSaveSettings').onclick = () => {
       state.settings.tusDate = document.getElementById('settingTusDate').value || '2027-08-15';
       state.settings.dailyGoalHours = parseFloat(document.getElementById('settingDailyGoal').value) || 8;
