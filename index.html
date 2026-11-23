@@ -1117,7 +1117,7 @@
     <header class="topbar">
       <div class="brand-group">
         <span class="brand-title">TUS Asistanı</span>
-        <span class="version-pill" id="appVersionBadge">v24</span>
+        <span class="version-pill" id="appVersionBadge">v29</span>
         <span class="countdown-pill" id="tusCountdownText">TUS'a -- Gün</span>
       </div>
       <div class="top-actions">
@@ -1247,6 +1247,10 @@
               <label class="check-label">
                 <input type="checkbox" id="lockscreenToggle" checked />
                 <span>Kilit Ekranı Bildirimi</span>
+              </label>
+              <label class="check-label" title="Başka bir uygulamada müzik dinlerken açın: uygulama ses çalmaz, müziği durdurmaz, medya kartı göstermez; yalnızca bildirim kalır.">
+                <input type="checkbox" id="musicModeToggle" />
+                <span>Müzik Modu</span>
               </label>
               <button type="button" class="btn btn-sm" id="btnNotifPerm" style="padding:3px 8px;font-size:11px;">Bildirim İzni</button>
             </div>
@@ -1652,8 +1656,12 @@
       { id: 'anatomi', name: 'Anatomi', group: 'Temel', color: '#c084fc' }
     ];
 
-    const APP_VERSION = 'v27';
-    const CACHE_VERSION = 'tus-asistani-v27-medya';
+    const APP_VERSION = 'v29';
+    const CACHE_VERSION = 'tus-asistani-v29';
+    (function showAppVersion() {
+      const el = document.getElementById('appVersionBadge');
+      if (el) el.textContent = APP_VERSION;
+    })();
     const STORAGE_KEY = 'tus_asistani_data_v5';
     const ACTIVE_TIMER_KEY = 'tus_asistani_active_timer_v1';
 
@@ -1737,7 +1745,8 @@
         tusDate: '2027-08-15',
         dailyGoalHours: 8,
         monthlyGoalHours: 220,
-        lockscreenNotif: true
+        lockscreenNotif: true,
+        musicMode: false
       },
       sessions: [],
       dayMeta: {},
@@ -2079,6 +2088,8 @@
       if (toggle) {
         toggle.checked = state.settings.lockscreenNotif !== false;
       }
+      const musicToggle = document.getElementById('musicModeToggle');
+      if (musicToggle) musicToggle.checked = isMusicMode();
       if (!btn) return;
       if (!('Notification' in window)) {
         btn.style.display = 'none';
@@ -2229,9 +2240,22 @@
       }
     }
 
+    function isMusicMode() {
+      return state.settings.musicMode === true;
+    }
+
+    function clearMediaSessionCard() {
+      try {
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = null;
+          navigator.mediaSession.playbackState = 'none';
+        }
+      } catch (e) {}
+    }
+
     function ensureLockScreenSession() {
       const toggle = document.getElementById('lockscreenToggle');
-      if (!toggle || !toggle.checked) {
+      if (!toggle || !toggle.checked || isMusicMode()) {
         if (silentAudioEl) silentAudioEl.pause();
         return;
       }
@@ -2285,7 +2309,7 @@
 
     function refreshMediaSessionKeepAlive() {
       const toggle = document.getElementById('lockscreenToggle');
-      if (!toggle || !toggle.checked || !timerState.running) return;
+      if (!toggle || !toggle.checked || !timerState.running || isMusicMode()) return;
       try {
         if (silentAudioEl && silentAudioEl.paused) {
           silentAudioEl.play().catch(() => {});
@@ -2315,6 +2339,7 @@
       syncLockScreenNotification(force);
 
       if (!('mediaSession' in navigator)) return;
+      if (isMusicMode()) return;
 
       const subj = SUBJECTS.find(s => s.id === timerState.selectedSubject)?.name || 'TUS';
       const allTimeSec = getAllTimeStudySec();
@@ -4062,6 +4087,20 @@
         if (silentAudioEl) silentAudioEl.pause();
         syncLockScreenNotification(true);
         showToast('Bildirimler kapatıldı');
+      }
+    };
+    document.getElementById('musicModeToggle').onchange = (e) => {
+      state.settings.musicMode = Boolean(e.target.checked);
+      saveState();
+      if (state.settings.musicMode) {
+        if (silentAudioEl) silentAudioEl.pause();
+        clearMediaSessionCard();
+        syncLockScreenNotification(true);
+        showToast('Müzik Modu açık: ses çalınmaz, müziğiniz kesilmez');
+      } else {
+        ensureLockScreenSession();
+        updateLockScreenMetadata(true);
+        showToast('Müzik Modu kapalı: medya kartı geri açıldı');
       }
     };
     document.getElementById('timerTopicInput').addEventListener('input', saveActiveTimerState);
