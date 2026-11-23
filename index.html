@@ -791,6 +791,38 @@
       );
       border-color: var(--rose);
     }
+    .sport-toggle-btn {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .sport-toggle-btn.active {
+      background: var(--emerald-bg);
+      border-color: var(--emerald);
+      color: #a7f3d0;
+    }
+    .cal-cell.sport:not(.nobet) {
+      background-color: var(--emerald-bg);
+      border-color: var(--emerald);
+    }
+    .cal-cell.sport.nobet {
+      box-shadow: inset 0 -3px 0 var(--emerald);
+    }
+    .cal-cell.sport.selected {
+      box-shadow: 0 0 0 2px var(--primary);
+    }
+    .cal-badge-s {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #059669;
+      color: #ffffff;
+      font-size: 8px;
+      font-weight: 900;
+      line-height: 1;
+      padding: 1.5px 2.5px;
+      border-radius: 3px;
+    }
     .cal-day-top {
       display: flex;
       align-items: center;
@@ -1311,6 +1343,10 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
             <span id="quickNobetLabel">Hızlı Nöbet İşaretleme: Kapalı</span>
           </button>
+          <button type="button" class="btn btn-sm sport-toggle-btn" id="btnQuickSportMode">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 6.5h11"/><path d="M6.5 17.5h11"/><path d="M3 9v6"/><path d="M6 6v12"/><path d="M18 6v12"/><path d="M21 9v6"/><path d="M6 12h12"/></svg>
+            <span id="quickSportLabel">Hızlı Spor İşaretleme: Kapalı</span>
+          </button>
         </div>
 
         <div class="cal-weekdays">
@@ -1322,7 +1358,10 @@
         <div class="selected-day-panel" id="selectedDayPanel">
           <div class="card-header" style="margin-bottom:8px;">
             <div class="card-title" id="selectedDayTitle">Seçili Gün: --</div>
-            <span id="selectedDayNobetBadge" style="font-size:11.5px;font-weight:700;color:#fda4af;"></span>
+            <span style="display:flex;gap:8px;flex-wrap:wrap;">
+              <span id="selectedDayNobetBadge" style="font-size:11.5px;font-weight:700;color:#fda4af;"></span>
+              <span id="selectedDaySportBadge" style="font-size:11.5px;font-weight:700;color:#6ee7b7;"></span>
+            </span>
           </div>
 
           <div class="day-summary-pills" id="selectedDaySummaryChips"></div>
@@ -1340,7 +1379,7 @@
           </div>
 
           <div style="background:var(--surface-3);border:1px solid var(--border);border-radius:10px;padding:10px;">
-            <div class="sub-label">Günün Nöbet Durumu ve Notunu Düzenle</div>
+            <div class="sub-label">Günün Nöbet / Spor Durumu ve Notunu Düzenle</div>
             <div class="form-grid" style="grid-template-columns: 1fr;">
               <div class="field-col">
                 <label>Nöbet Durumu</label>
@@ -1352,12 +1391,25 @@
                 </select>
               </div>
               <div class="field-col">
+                <label>Spor Durumu</label>
+                <select id="daySportSelect">
+                  <option value="">Spor Yok</option>
+                  <option value="Spor">Spor Yaptım</option>
+                  <option value="Koşu">Koşu</option>
+                  <option value="Ağırlık / Fitness">Ağırlık / Fitness</option>
+                  <option value="Yürüyüş">Yürüyüş</option>
+                  <option value="Yüzme">Yüzme</option>
+                  <option value="Bisiklet">Bisiklet</option>
+                  <option value="Diğer">Diğer</option>
+                </select>
+              </div>
+              <div class="field-col">
                 <label>Günlük Not veya Çalışma Planı</label>
                 <textarea id="dayNoteInput" rows="2" placeholder="Örn: Nöbet ertesi dinlenme / Bugün Tiroid ve Meme hastalıkları tekrar edildi..."></textarea>
               </div>
             </div>
             <div style="display:flex;justify-content:flex-end;">
-              <button type="button" class="btn btn-primary btn-sm" id="btnSaveDayMeta">Günün Notunu & Nöbetini Kaydet</button>
+              <button type="button" class="btn btn-primary btn-sm" id="btnSaveDayMeta">Günü Kaydet (Nöbet, Spor, Not)</button>
             </div>
           </div>
         </div>
@@ -1394,6 +1446,11 @@
             <div class="kpi-label">Aktif Gün</div>
             <div class="kpi-val" style="color:var(--emerald);" id="kpiActiveDays">0 gün</div>
             <div class="kpi-sub" id="kpiAllTimeTotal">Genel: 0.0 sa</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Spor Günü</div>
+            <div class="kpi-val" style="color:#6ee7b7;" id="kpiSportCount">0 gün</div>
+            <div class="kpi-sub">Seçili ay</div>
           </div>
         </div>
         <div class="progress-bar-bg">
@@ -1639,8 +1696,8 @@
       { id: 'anatomi', name: 'Anatomi', group: 'Temel', color: '#c084fc' }
     ];
 
-    const APP_VERSION = 'v24';
-    const CACHE_VERSION = 'tus-asistani-v24-fix';
+    const APP_VERSION = 'v25';
+    const CACHE_VERSION = 'tus-asistani-v25-spor';
     const STORAGE_KEY = 'tus_asistani_data_v5';
     const ACTIVE_TIMER_KEY = 'tus_asistani_active_timer_v1';
 
@@ -1835,6 +1892,7 @@
     let calMonth = initM - 1;
     let selectedDateISO = initStudyDay;
     let quickNobetMode = false;
+    let quickSportMode = false;
 
     let silentAudioEl = null;
     let lastMediaKey = '';
@@ -2975,6 +3033,7 @@
 
       document.getElementById('selectedDayTitle').textContent = `Seçili Gün: ${selectedDateISO}`;
       document.getElementById('selectedDayNobetBadge').textContent = selMeta.nobet ? `• ${selMeta.nobet}` : '';
+      document.getElementById('selectedDaySportBadge').textContent = selMeta.sport ? `• 🏃 ${selMeta.sport}` : '';
 
       const chipsEl = document.getElementById('selectedDaySummaryChips');
       let chipsHtml = `
@@ -3040,6 +3099,17 @@
       }
 
       document.getElementById('dayNobetSelect').value = selMeta.nobet || '';
+      (function () {
+        const sportSel = document.getElementById('daySportSelect');
+        const sv = selMeta.sport || '';
+        if (sv && !Array.from(sportSel.options).some(o => o.value === sv)) {
+          const opt = document.createElement('option');
+          opt.value = sv;
+          opt.textContent = sv;
+          sportSel.appendChild(opt);
+        }
+        sportSel.value = sv;
+      })();
       document.getElementById('dayNoteInput').value = selMeta.note || '';
     }
 
@@ -3057,6 +3127,7 @@
               kind: 'note',
               date,
               nobet: meta.nobet || '',
+              sport: meta.sport || '',
               text: meta.note.trim()
             });
           }
@@ -3107,6 +3178,7 @@
                   <span style="color:var(--amber);font-weight:700;">Günlük Not</span>
                   <span style="color:var(--muted);margin-left:6px;">• ${it.date}</span>
                   ${it.nobet ? `<span style="color:#fda4af;margin-left:6px;font-size:11px;">(${it.nobet})</span>` : ''}
+                  ${it.sport ? `<span style="color:#6ee7b7;margin-left:6px;font-size:11px;">(🏃 ${escapeHtml(it.sport)})</span>` : ''}
                 </div>
                 <div style="color:#fef3c7;white-space:pre-wrap;word-break:break-word;">${escapeHtml(it.text)}</div>
               </div>
@@ -3158,6 +3230,7 @@
       let monthSessionsCount = 0;
       let activeDaysCount = 0;
       let nobetDaysCount = 0;
+      let sportDaysCount = 0;
       let nonNobetStudySec = 0;
       let nonNobetDaysCount = 0;
 
@@ -3169,6 +3242,7 @@
 
         monthStudySec += daySec;
         if (daySec > 0) activeDaysCount++;
+        if (meta.sport) sportDaysCount++;
         if (meta.nobet) {
           nobetDaysCount++;
         } else {
@@ -3185,6 +3259,7 @@
           + (iso === today ? ' today' : '')
           + (iso === selectedDateISO ? ' selected' : '')
           + (meta.nobet ? ' nobet' : '')
+          + (meta.sport ? ' sport' : '')
           + (hasReview ? ' has-review' : '');
 
         const hrsText = formatCalDuration(daySec);
@@ -3193,6 +3268,7 @@
             <span class="cal-day-num-wrap">
               <span>${d}</span>
               ${meta.nobet ? '<span class="cal-badge-n">N</span>' : ''}
+              ${meta.sport ? '<span class="cal-badge-s">S</span>' : ''}
               ${hasReview ? `<span class="cal-badge-t ${allRevsDone ? 'all-done' : ''}">T</span>` : ''}
             </span>
             ${meta.note ? '<span class="note-dot"></span>' : ''}
@@ -3208,6 +3284,12 @@
             state.dayMeta[iso] = cur;
             saveState();
             showToast(cur.nobet ? `${iso}: Nöbet işaretlendi` : `${iso}: Nöbet kaldırıldı`);
+          } else if (quickSportMode) {
+            const cur = state.dayMeta[iso] || { nobet: '', note: '' };
+            cur.sport = cur.sport ? '' : 'Spor';
+            state.dayMeta[iso] = cur;
+            saveState();
+            showToast(cur.sport ? `${iso}: Spor işaretlendi` : `${iso}: Spor kaldırıldı`);
           }
           renderMonthlyTab();
         };
@@ -3243,6 +3325,7 @@
       document.getElementById('kpiDailyAvg').textContent = `${(monthStudySec / 3600 / daysInMonth).toFixed(1)} sa`;
       document.getElementById('kpiNonNobetAvg').textContent = nonNobetDaysCount > 0 ? `${(nonNobetStudySec / 3600 / nonNobetDaysCount).toFixed(1)} sa` : '0.0 sa';
       document.getElementById('kpiNobetCount').textContent = `${nobetDaysCount} nöbet günü`;
+      document.getElementById('kpiSportCount').textContent = `${sportDaysCount} gün`;
       document.getElementById('kpiActiveDays').textContent = `${activeDaysCount} gün`;
       document.getElementById('kpiAllTimeTotal').textContent = `Genel: ${formatDuration(allTimeSec)}`;
 
@@ -4112,15 +4195,32 @@
       const btn = document.getElementById('btnQuickNobetMode');
       btn.classList.toggle('active', quickNobetMode);
       document.getElementById('quickNobetLabel').textContent = `Hızlı Nöbet İşaretleme: ${quickNobetMode ? 'Açık' : 'Kapalı'}`;
+      if (quickNobetMode && quickSportMode) {
+        quickSportMode = false;
+        document.getElementById('btnQuickSportMode').classList.remove('active');
+        document.getElementById('quickSportLabel').textContent = 'Hızlı Spor İşaretleme: Kapalı';
+      }
+    };
+    document.getElementById('btnQuickSportMode').onclick = () => {
+      quickSportMode = !quickSportMode;
+      const btn = document.getElementById('btnQuickSportMode');
+      btn.classList.toggle('active', quickSportMode);
+      document.getElementById('quickSportLabel').textContent = `Hızlı Spor İşaretleme: ${quickSportMode ? 'Açık' : 'Kapalı'}`;
+      if (quickSportMode && quickNobetMode) {
+        quickNobetMode = false;
+        document.getElementById('btnQuickNobetMode').classList.remove('active');
+        document.getElementById('quickNobetLabel').textContent = 'Hızlı Nöbet İşaretleme: Kapalı';
+      }
     };
     document.getElementById('btnSaveDayMeta').onclick = () => {
       state.dayMeta[selectedDateISO] = {
         nobet: document.getElementById('dayNobetSelect').value,
+        sport: document.getElementById('daySportSelect').value,
         note: document.getElementById('dayNoteInput').value.trim()
       };
       saveState();
       renderAll();
-      showToast('Günün notu ve nöbet bilgisi kaydedildi');
+      showToast('Günün nöbet, spor ve not bilgisi kaydedildi');
     };
 
     document.getElementById('archiveSubjectFilter').onchange = renderTopicsAndNotesArchive;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tus-asistani-v24-fix'; // index.html içindeki CACHE_VERSION ile aynı olmalı
+const CACHE_NAME = 'tus-asistani-v25-spor'; // index.html içindeki CACHE_VERSION ile aynı olmalı
 const ASSETS = [
   './',
   './index.html',
