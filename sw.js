@@ -11,26 +11,28 @@ const ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      Promise.allSettled(
-        ASSETS.map((url) =>
-          fetch(url, { cache: 'no-cache' }).then((res) => {
-            if (res && res.ok) return cache.put(url, res);
-          })
+    caches.open(CACHE_NAME)
+      .then((cache) =>
+        Promise.allSettled(
+          ASSETS.map((url) =>
+            fetch(url, { cache: 'no-cache' }).then((res) => {
+              if (res && res.ok) return cache.put(url, res);
+            })
+          )
         )
       )
-    )
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      )
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -39,11 +41,10 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       if (clientList.length > 0) {
-        for (const client of clientList) {
-          client.postMessage({ type: 'TUS_NOTIFICATION_ACTION', action });
-        }
-        if (action === 'focus' && 'focus' in clientList[0]) {
-          return clientList[0].focus();
+        const targetClient = clientList.find((c) => c.focused) || clientList[0];
+        targetClient.postMessage({ type: 'TUS_NOTIFICATION_ACTION', action });
+        if (action === 'focus' && 'focus' in targetClient) {
+          return targetClient.focus();
         }
         return;
       }
