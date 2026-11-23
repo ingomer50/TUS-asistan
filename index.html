@@ -1042,25 +1042,6 @@
       padding: 16px;
       margin-top: 16px;
     }
-    .aod-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: #000000;
-      color: #e2e8f0;
-      z-index: 90;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 24px;
-    }
-    .aod-overlay.open {
-      display: flex;
-    }
-    .aod-shift-box {
-      transition: transform 0.6s ease;
-    }
     .toast {
       position: fixed;
       bottom: 16px;
@@ -1085,7 +1066,7 @@
         background: #ffffff !important;
         color: #0f172a !important;
       }
-      .app-wrap, .aod-overlay, .toast, #settingsModal {
+      .app-wrap, .toast, #settingsModal {
         display: none !important;
       }
       #reportModal {
@@ -1140,10 +1121,6 @@
         <span class="countdown-pill" id="tusCountdownText">TUS'a -- Gün</span>
       </div>
       <div class="top-actions">
-        <button type="button" class="btn btn-sm" id="btnOpenAod" title="Galaxy S23 Ultra OLED AOD">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-          <span>AOD</span>
-        </button>
         <button type="button" class="btn btn-sm" id="btnOpenReport">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
           <span>Rapor</span>
@@ -1658,27 +1635,6 @@
     </div>
   </div>
 
-  <!-- GALAXY S23 ULTRA OLED AOD OVERLAY -->
-  <div class="aod-overlay" id="aodOverlay">
-    <div class="aod-shift-box" id="aodShiftBox">
-      <div style="font-size:12px;color:#64748b;letter-spacing:1px;margin-bottom:4px;">GALAXY S23 ULTRA • OLED AOD (PİL KORUMA)</div>
-      <div id="aodClock" style="font-size:54px;font-weight:200;letter-spacing:2px;color:#f8fafc;">00:00</div>
-      <div id="aodSubject" style="font-size:16px;font-weight:700;color:#38bdf8;margin-top:8px;">Genel Cerrahi</div>
-      <div id="aodTimer" style="font-size:42px;font-weight:800;font-variant-numeric:tabular-nums;margin:8px 0;">0 dk</div>
-      <div id="aodBreakAlert" style="display:none;color:#f87171;font-size:13px;font-weight:800;margin-bottom:8px;">⚠️ Mola süresi aşıldı!</div>
-      <div id="aodDailyStats" style="font-size:13px;color:#94a3b8;margin-bottom:18px;">Bugün Ders: 0 dk • Mola: 0 dk</div>
-      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">
-        <button type="button" class="btn btn-primary" id="aodBtnStart">Başlat</button>
-        <button type="button" class="btn btn-amber" id="aodBtnBreak" disabled>Mola Ver</button>
-        <button type="button" class="btn btn-emerald" id="aodBtnSave" disabled>Kaydet & Bitir</button>
-      </div>
-      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-        <button type="button" class="btn btn-sm" id="btnToggleAodSec" style="border-color:#1e293b;color:#64748b;">Saniyeyi Göster</button>
-        <button type="button" class="btn btn-sm" id="btnCloseAod" style="border-color:#334155;color:#cbd5e1;">AOD Kapat</button>
-      </div>
-    </div>
-  </div>
-
   <div class="toast" id="toastBox"></div>
 
   <script>
@@ -1696,8 +1652,8 @@
       { id: 'anatomi', name: 'Anatomi', group: 'Temel', color: '#c084fc' }
     ];
 
-    const APP_VERSION = 'v25';
-    const CACHE_VERSION = 'tus-asistani-v25-spor';
+    const APP_VERSION = 'v26';
+    const CACHE_VERSION = 'tus-asistani-v26-aod';
     const STORAGE_KEY = 'tus_asistani_data_v5';
     const ACTIVE_TIMER_KEY = 'tus_asistani_active_timer_v1';
 
@@ -2368,13 +2324,13 @@
 
       if (timerState.running && timerState.phase === 'break') {
         stateTitle = isBreakOverTarget()
-          ? `🔴 MOLA AŞILDI! • ${formatDuration(curSec)}`
-          : `☕ MOLADA • ${formatDuration(curSec)}`;
+          ? `🔴 ${formatDuration(curSec)} • MOLA AŞILDI`
+          : `☕ ${formatDuration(curSec)} • MOLADA`;
         artistLine = `▶ Derse Dön • ⏭ Kaydet & Bitir`;
       } else if (timerState.running && timerState.phase === 'study') {
         stateTitle = isStudyGoalReached()
-          ? `🟣 ${subj} (Hedef OK) • ${formatDuration(curSec)}`
-          : `▶ ${subj} • ${formatDuration(curSec)}`;
+          ? `🟣 ${formatDuration(curSec)} • ${subj} (Hedef OK)`
+          : `▶ ${formatDuration(curSec)} • ${subj}`;
         artistLine = `⏸ Mola Ver • ⏭ Kaydet & Bitir`;
       } else if (keepPausedMediaOnLockscreen) {
         stateTitle = `✅ Kaydedildi • Yeni Oturum: ${subj}`;
@@ -2408,6 +2364,20 @@
       });
     }
 
+    // Arka plan / kilitli ekranda sayfa zamanlayıcıları kısılsa bile dakika bilgisinin
+    // zamanında güncellenmesi için Web Worker tabanlı 1 sn'lik kalp atışı
+    (function startBackgroundHeartbeat() {
+      try {
+        if (!window.Worker || !window.Blob || !window.URL) return;
+        const code = "setInterval(function(){ postMessage(1); }, 1000);";
+        const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+        const hb = new Worker(url);
+        hb.onmessage = () => {
+          if (timerState.running) tickTimer();
+        };
+      } catch (e) {}
+    })();
+
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         if (timerState.running) {
@@ -2423,7 +2393,6 @@
           saveActiveTimerState();
           updateTimerUI(true);
         }
-        requestAodWakeLock();
       }
     });
     window.addEventListener('pagehide', () => {
@@ -2541,11 +2510,6 @@
       const molaBtn = document.getElementById('btnMola');
       const molaBtnText = document.getElementById('btnMolaText');
       const saveBtn = document.getElementById('btnSaveSession');
-      const aodStart = document.getElementById('aodBtnStart');
-      const aodBreak = document.getElementById('aodBtnBreak');
-      const aodSave = document.getElementById('aodBtnSave');
-      const aodTimerEl = document.getElementById('aodTimer');
-      const aodBreakAlertEl = document.getElementById('aodBreakAlert');
 
       syncTargetLockUI();
 
@@ -2577,8 +2541,6 @@
 
       timerBox.classList.remove('state-study', 'state-purple', 'state-break', 'state-break-over');
       if (breakAlertEl) breakAlertEl.classList.remove('show');
-      if (aodBreakAlertEl) aodBreakAlertEl.style.display = 'none';
-      if (aodTimerEl) aodTimerEl.style.color = '#f8fafc';
 
       const isSessionActive = isSessionLocked();
 
@@ -2591,11 +2553,6 @@
             breakAlertEl.textContent = `⚠️ Mola süresi aşıldı! (${targetBreakMin} dk hedefi +${formatHMS(overSec)} geçildi)`;
             breakAlertEl.classList.add('show');
           }
-          if (aodBreakAlertEl) {
-            aodBreakAlertEl.textContent = `⚠️ Mola süresi aşıldı! (+${formatDuration(overSec)})`;
-            aodBreakAlertEl.style.display = 'block';
-          }
-          if (aodTimerEl) aodTimerEl.style.color = '#f87171';
         } else {
           timerBox.classList.add('state-break');
           banner.innerHTML = `<span class="pulse-dot"></span><span>☕ ŞU AN MOLADASINIZ</span>`;
@@ -2609,16 +2566,12 @@
         molaBtn.disabled = true;
         if (molaBtnText) molaBtnText.textContent = 'Moladasınız...';
         saveBtn.disabled = false;
-        if (aodStart) { aodStart.disabled = false; aodStart.textContent = 'Derse Dön'; }
-        if (aodBreak) { aodBreak.disabled = true; aodBreak.textContent = 'Moladasınız...'; }
-        if (aodSave) { aodSave.disabled = false; }
       } else if (timerState.phase === 'study' && timerState.running) {
         if (studyGoalReached) {
           const extraSec = sessionStudySec - timerState.targetStudySec;
           timerBox.classList.add('state-purple');
           banner.innerHTML = `<span class="pulse-dot"></span><span>🟣 HEDEF TAMAMLANDI • ${subj ? subj.name : ''}</span>`;
           subCap.textContent = `${targetStudyMin} dk hedefi geçildi (+${formatHMS(extraSec)} ekstra) • Oturum Molası: ${formatDuration(sessionBreakSec)}`;
-          if (aodTimerEl) aodTimerEl.style.color = '#d8b4fe';
         } else {
           timerBox.classList.add('state-study');
           banner.innerHTML = `<span class="pulse-dot"></span><span>ÇALIŞILIYOR • ${subj ? subj.name : ''}</span>`;
@@ -2632,9 +2585,6 @@
         molaBtn.disabled = false;
         if (molaBtnText) molaBtnText.textContent = 'Mola Ver';
         saveBtn.disabled = false;
-        if (aodStart) { aodStart.disabled = true; aodStart.textContent = 'Çalışılıyor...'; }
-        if (aodBreak) { aodBreak.disabled = false; aodBreak.textContent = 'Mola Ver'; }
-        if (aodSave) { aodSave.disabled = false; }
       } else {
         banner.innerHTML = `<span>HAZIR • ${subj ? subj.name : ''}</span>`;
         subCap.textContent = isSessionActive
@@ -2647,9 +2597,6 @@
         molaBtn.disabled = true;
         if (molaBtnText) molaBtnText.textContent = 'Mola Ver';
         saveBtn.disabled = !isSessionActive;
-        if (aodStart) { aodStart.disabled = false; aodStart.textContent = 'Başlat'; }
-        if (aodBreak) { aodBreak.disabled = true; aodBreak.textContent = 'Mola Ver'; }
-        if (aodSave) { aodSave.disabled = !isSessionActive; }
       }
 
       const goalHrs = state.settings.dailyGoalHours || 8;
@@ -2658,19 +2605,6 @@
       document.getElementById('todayGoalPctText').textContent = `%${pct}`;
       document.getElementById('dailyGoalHoursText').textContent = `${goalHrs} sa`;
 
-      const aodSubjEl = document.getElementById('aodSubject');
-      if (timerState.phase === 'break' && timerState.running) {
-        aodSubjEl.textContent = breakOverTarget ? '🔴 MOLA SÜRESİ AŞILDI' : 'ŞU AN MOLADASINIZ';
-        aodSubjEl.style.color = breakOverTarget ? '#f87171' : '#fbbf24';
-      } else if (timerState.phase === 'study' && timerState.running && studyGoalReached) {
-        aodSubjEl.textContent = `🟣 ${subj ? subj.name : ''} (Hedef OK)`;
-        aodSubjEl.style.color = '#d8b4fe';
-      } else {
-        aodSubjEl.textContent = subj ? subj.name : '';
-        aodSubjEl.style.color = '#38bdf8';
-      }
-      if (aodTimerEl) aodTimerEl.textContent = aodShowSeconds ? formatHMS(sec) : formatDuration(sec);
-      document.getElementById('aodDailyStats').textContent = `Bugün Ders: ${formatDuration(totals.studySec)} • Mola: ${formatDuration(totals.breakSec)}`;
 
       document.title = timerState.running
         ? `${formatHMS(sec)} - ${timerState.phase === 'break' ? (breakOverTarget ? 'MOLA AŞILDI' : 'Mola') : (subj ? subj.name : 'TUS')}`
@@ -4322,48 +4256,6 @@
       showToast('Ayarlar kaydedildi');
     };
 
-    let wakeLockObj = null;
-    let aodShiftInterval = null;
-    let aodShowSeconds = false;
-    async function requestAodWakeLock() {
-      try {
-        if ('wakeLock' in navigator && document.getElementById('aodOverlay')?.classList.contains('open')) {
-          wakeLockObj = await navigator.wakeLock.request('screen');
-        }
-      } catch (e) {}
-    }
-    async function openAod() {
-      document.getElementById('aodOverlay').classList.add('open');
-      updateAodClock();
-      await requestAodWakeLock();
-      clearInterval(aodShiftInterval);
-      aodShiftInterval = setInterval(() => {
-        updateAodClock();
-        const dx = Math.floor(Math.random() * 14) - 7;
-        const dy = Math.floor(Math.random() * 14) - 7;
-        document.getElementById('aodShiftBox').style.transform = `translate(${dx}px, ${dy}px)`;
-      }, 30000);
-    }
-    function closeAod() {
-      document.getElementById('aodOverlay').classList.remove('open');
-      clearInterval(aodShiftInterval);
-      if (wakeLockObj) { wakeLockObj.release().catch(() => {}); wakeLockObj = null; }
-    }
-    function updateAodClock() {
-      const d = new Date();
-      document.getElementById('aodClock').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    }
-
-    document.getElementById('btnOpenAod').onclick = openAod;
-    document.getElementById('btnCloseAod').onclick = closeAod;
-    document.getElementById('aodBtnStart').onclick = () => startStudyMode();
-    document.getElementById('aodBtnBreak').onclick = () => startBreakMode();
-    document.getElementById('aodBtnSave').onclick = () => commitCurrentSegment(false);
-    document.getElementById('btnToggleAodSec').onclick = () => {
-      aodShowSeconds = !aodShowSeconds;
-      document.getElementById('btnToggleAodSec').textContent = aodShowSeconds ? 'Saniyeyi Gizle (Pil Tasarrufu)' : 'Saniyeyi Göster';
-      updateTimerUI(false);
-    };
 
     if ('ResizeObserver' in window) {
       const ro = new ResizeObserver(() => {
