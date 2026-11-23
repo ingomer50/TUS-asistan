@@ -1652,8 +1652,8 @@
       { id: 'anatomi', name: 'Anatomi', group: 'Temel', color: '#c084fc' }
     ];
 
-    const APP_VERSION = 'v26';
-    const CACHE_VERSION = 'tus-asistani-v26-aod';
+    const APP_VERSION = 'v27';
+    const CACHE_VERSION = 'tus-asistani-v27-medya';
     const STORAGE_KEY = 'tus_asistani_data_v5';
     const ACTIVE_TIMER_KEY = 'tus_asistani_active_timer_v1';
 
@@ -1945,7 +1945,7 @@
 
     function createAudibleThresholdWavUrl() {
       const sampleRate = 8000;
-      const numSamples = sampleRate * 2;
+      const numSamples = sampleRate * 12;
       const buffer = new ArrayBuffer(44 + numSamples * 2);
       const view = new DataView(buffer);
       function writeStr(off, s) {
